@@ -5,10 +5,12 @@ Created on Thu Jun 20 10:26:05 2020
 @author: hongsong chou
 """
 
+import multiprocessing
 from multiprocessing import Process, Queue
 from marketDataService import MarketDataService
 from exchangeSimulator import ExchangeSimulator
 from quantTradingPlatform import TradingPlatform
+multiprocessing.set_start_method('fork')
 
 if __name__ == '__main__':
     ###########################################################################

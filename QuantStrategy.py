@@ -12,19 +12,8 @@ from common.OrderBookSnapshot_FiveLevels import OrderBookSnapshot_FiveLevels
 from common.Strategy import Strategy
 from common.SingleStockOrder import SingleStockOrder
 from common.SingleStockExecution import SingleStockExecution
-from bottle import route, run, template
-
-#Route to the main page
-@route('/main')
-def index():
-    #TODO: add a complete html page here, with react.js
-    return template('<b>trading {{name}}</b>! <br> Graph Here')
-
-#Route to be called by the main page every second to update the graphs
-@route('/latest_data')
-def index():
-    #TODO: read from local json file, path is hardcoded "./"
-    return template('<b>update graphs</b>')
+import pandas as pd
+#TODO: use dash plotly to plot realtime networth
 
 class QuantStrategy(Strategy):
     
@@ -32,13 +21,17 @@ class QuantStrategy(Strategy):
         super(QuantStrategy, self).__init__(stratID, stratName, stratAuthor) #call constructor of parent
         self.ticker = ticker #public field
         self.day = day #public field
-        #run(host='localhost', port=8080)
-        self.networth = {} #{(date,timestamp):networth}
-        self.cash = {} #{(date,timestamp):cash}
-        self.current_position = {} # {'ticker':quantity}
-        self.position_price = {} # {(date,timestamp,ticker):price}
-        self.submitted_order = [] # [SingleStockOrder]
-        self.executed_order = [] # [SingleStockExecution]
+        #networth is a dataframe with columns: date, timestamp, networth
+        self.networth = pd.DataFrame(columns=['date','timestamp','networth'])
+        #cash is a dataframe with columns: date, timestamp, cash
+        self.cash = pd.DataFrame(columns=['date','timestamp','cash'])
+        # position_price is a dataframe with columns: date, timestamp, ticker, price
+        self.position_price = pd.DataFrame(columns=['date','timestamp','ticker','price'])
+        # submitted_order is a dataframe with columns: date, submissionTime, ticker, orderID, currStatus, currStatusTime, direction, price, size, type
+        self.submitted_order = pd.DataFrame(columns=['date','submissionTime','ticker','orderID','currStatus','currStatusTime','direction','price','size','type'])
+        # executed_order is a dataframe with columns: date, ticker, timeStamp, execID, orderID, direction, price, size, comm
+        self.executed_order = pd.DataFrame(columns=['date','ticker','timeStamp','execID','orderID','direction','price','size','comm'])
+        self.current_position = {}  # {'ticker':quantity}
 
     def getStratDay(self):
         return self.day
@@ -49,21 +42,25 @@ class QuantStrategy(Strategy):
         elif (marketData is None) and ((execution is not None) and (isinstance(execution, SingleStockExecution))):
             #handle executions
             print('[%d] Strategy.handle_execution' % (os.getpid()))
-            # TODO: save executions order to a local json file, path is hardcoded "./"
-            # TODO: update current position and save to a local json file, path is hardcoded "./"
-            # TODO: update current PnL and save to a local json file, path is hardcoded "./"
+            # TODO: save executions order to a local csv file, path is hardcoded "./"
+            # TODO: update current position and save to a local csv file, path is hardcoded "./"
+            # TODO: update current PnL and save to a local csv file, path is hardcoded "./"
             print(execution.outputAsArray())
             return None
         elif ((marketData is not None) and (isinstance(marketData, OrderBookSnapshot_FiveLevels))) and (execution is None):
-            print(marketData.outputAsDataFrame())
-            #handle new market data, then create a new order and send it via quantTradingPlatform.
-            #TODO: it is the first time to receive market data, initialize the networth, cash
+            current_market_data = marketData.outputAsDataFrame()
+            #handle new market data, then create a new order and send it via quantTradingPlatform if needed
+            #If it is the first time to receive market data, initialize the networth, cash
+            if self.networth.empty:
+                self.networth = self.networth.append({'date':current_market_data.iloc[0]['date'], 'timestamp':marketData.iloc[0]['time'], 'networth':1000000}, ignore_index=True)
+            if self.cash.empty:
+                self.cash = self.cash.append({'date':current_market_data.iloc[0]['date'], 'timestamp':marketData.iloc[0]['time'], 'cash':1000000}, ignore_index=True)
 
-            #TODO: update PnL if there is an open position, and save to a local json file, path is hardcoded "./"
+            #TODO: update PnL if there is an open position, and save to a local csv file, path is hardcoded "./"
             #if len(self.current_position) > 0:
 
 
-            #TODO: if the strategy submits an order, save submitted order to a local json file, path is hardcoded "./"
+            #TODO: if the strategy submits an order, save submitted order to a local csv file, path is hardcoded "./"
             return SingleStockOrder('testTicker','2019-07-05',time.asctime(time.localtime(time.time())))
         else:
             return None

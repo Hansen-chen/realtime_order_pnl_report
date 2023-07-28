@@ -14,10 +14,13 @@ from common.SingleStockOrder import SingleStockOrder
 from common.SingleStockExecution import SingleStockExecution
 from bottle import route, run, template
 
+#Route to the main page
 @route('/main')
 def index():
+    #TODO: add a complete html page here, with react.js
     return template('<b>trading {{name}}</b>! <br> Graph Here')
 
+#Route to be called by the main page every second to update the graphs
 @route('/latest_data')
 def index():
     #TODO: read from local json file, path is hardcoded "./"
@@ -29,7 +32,13 @@ class QuantStrategy(Strategy):
         super(QuantStrategy, self).__init__(stratID, stratName, stratAuthor) #call constructor of parent
         self.ticker = ticker #public field
         self.day = day #public field
-        run(host='localhost', port=8081)
+        #run(host='localhost', port=8080)
+        self.networth = {} #{(date,timestamp):networth}
+        self.cash = {} #{(date,timestamp):cash}
+        self.current_position = {} # {'ticker':quantity}
+        self.position_price = {} # {(date,timestamp,ticker):price}
+        self.submitted_order = [] # [SingleStockOrder]
+        self.executed_order = [] # [SingleStockExecution]
 
     def getStratDay(self):
         return self.day
@@ -46,9 +55,15 @@ class QuantStrategy(Strategy):
             print(execution.outputAsArray())
             return None
         elif ((marketData is not None) and (isinstance(marketData, OrderBookSnapshot_FiveLevels))) and (execution is None):
+            print(marketData.outputAsDataFrame())
             #handle new market data, then create a new order and send it via quantTradingPlatform.
+            #TODO: it is the first time to receive market data, initialize the networth, cash
+
             #TODO: update PnL if there is an open position, and save to a local json file, path is hardcoded "./"
-            #TODO: save submitted order to a local json file, path is hardcoded "./"
+            #if len(self.current_position) > 0:
+
+
+            #TODO: if the strategy submits an order, save submitted order to a local json file, path is hardcoded "./"
             return SingleStockOrder('testTicker','2019-07-05',time.asctime(time.localtime(time.time())))
         else:
             return None

@@ -14,7 +14,7 @@ class OrderBookSnapshot_FiveLevels(OrderBookSnapshot):
     bidSize1, bidSize2, bidSize3, bidSize4, bidSize5 = None, None, None, None, None
     askSize1, askSize2, askSize3, askSize4, askSize5 = None, None, None, None, None
     
-    initializationFlag = False
+    initializationFlag = True
     
     outputCols = ['ticker','date','time', \
                   'askPrice5','askPrice4','askPrice3','askPrice2','askPrice1', \

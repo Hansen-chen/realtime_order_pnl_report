@@ -9,6 +9,7 @@ import time
 import random
 import os
 from common.OrderBookSnapshot_FiveLevels import OrderBookSnapshot_FiveLevels
+import datetime
 
 class MarketDataService:
 
@@ -31,8 +32,7 @@ class MarketDataService:
             askPrice.append(askPrice1+i*0.01)
             bidSize.append(100+random.randint(0,100)*100)
             askSize.append(100+random.randint(0,100)*100)
-        quoteSnapshot = OrderBookSnapshot_FiveLevels('testTicker', '20230706', time.asctime(time.localtime(time.time())), 
-                                                     bidPrice, askPrice, bidSize, askSize)
+        quoteSnapshot = OrderBookSnapshot_FiveLevels('testTicker', datetime.datetime.now().strftime('%Y-%m-%d'), datetime.datetime.now(),bidPrice, askPrice, bidSize, askSize)
         print('[%d]MarketDataService>>>produce_quote' % (os.getpid()))
         print(quoteSnapshot.outputAsDataFrame())
         marketData_2_exchSim_q.put(quoteSnapshot)

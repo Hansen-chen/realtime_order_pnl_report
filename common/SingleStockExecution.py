@@ -7,15 +7,15 @@ Created on Sat Jul 3 07:11:28 2019
 import random
 class SingleStockExecution():
     
-    def __init__(self, ticker, date, timeStamp, orderID):
+    def __init__(self, ticker, date, timeStamp, orderID, size, price, direction):
         self.execID = random.randint(0,1000)
         self.orderID = orderID
         self.ticker = ticker
         self.date = date
         self.timeStamp = timeStamp
-        self.direction = None
-        self.price = None
-        self.size = None
+        self.direction = direction
+        self.price = price
+        self.size = size
         self.comm = 5 #commission for this transaction
 
     def outputAsArray(self):

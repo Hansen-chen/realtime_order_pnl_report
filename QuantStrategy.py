@@ -7,7 +7,7 @@ Created on Thu Jun 20 10:26:05 2020
 """
 
 import os
-import time
+import time, datetime
 from common.OrderBookSnapshot_FiveLevels import OrderBookSnapshot_FiveLevels
 from common.Strategy import Strategy
 from common.SingleStockOrder import SingleStockOrder
@@ -47,6 +47,7 @@ class QuantStrategy(Strategy):
         return self.day
     
     def run(self, marketData, execution):
+        print(self.current_position)
         if (marketData is None) and (execution is None):
             return None
         elif (marketData is None) and ((execution is not None) and (isinstance(execution, SingleStockExecution))):
@@ -62,13 +63,13 @@ class QuantStrategy(Strategy):
                 return None
             else:
                 #locate the row in self.submitted_order with orderID
-                row = self.submitted_order.loc[self.submitted_order['orderID'] == orderID]
+                submitted_size = self.submitted_order.loc[self.submitted_order['orderID'] == orderID, 'size'][0]
                 #check if the size of executed order is the same as the size of submitted order
-                if size < row['size'].values[0]:
+                if size < submitted_size:
                     self.submitted_order.loc[self.submitted_order['orderID'] == orderID, 'currStatus'] = 'PartiallyFilled'
                     #update the size of submitted order
                     self.submitted_order.loc[self.submitted_order['orderID'] == orderID, 'size'] -= size
-                elif size > row['size'].values[0]:
+                elif size > submitted_size:
                     print('Error: size of executed order is more than the size of submitted order')
                     return None
                 else:
@@ -93,7 +94,7 @@ class QuantStrategy(Strategy):
                 return None
 
             # save executions order to a local csv file, path is hardcoded "./"
-            self.executed_order = self.executed_order.append({'date':date, 'ticker':ticker, 'timeStamp':timeStamp, 'execID':execID, 'orderID':orderID, 'direction':direction, 'price':price, 'size':size, 'comm':comm}, ignore_index=True)
+            self.executed_order = pd.concat([self.executed_order, pd.DataFrame({'date':date, 'ticker':ticker, 'timeStamp':timeStamp, 'execID':execID, 'orderID':orderID, 'direction':direction, 'price':price, 'size':size, 'comm':comm}, index=[0])])
             self.executed_order.to_csv('./executed_order.csv', index=False)
 
             current_cash = self.cash.iloc[-1]['cash']
@@ -104,7 +105,7 @@ class QuantStrategy(Strategy):
             elif direction == 'Sell':
                 current_cash += price * size - comm
 
-            self.cash = self.cash.append({'date':date, 'timestamp':timeStamp, 'cash':current_cash}, ignore_index=True)
+            self.cash = pd.concat([self.cash, pd.DataFrame({'date':date, 'timestamp':timeStamp, 'cash':current_cash}, index=[0])])
             self.cash.to_csv('./cash.csv', index=False)
 
             current_networth = current_cash
@@ -112,21 +113,22 @@ class QuantStrategy(Strategy):
             for ticker in self.current_position:
                 current_networth += self.current_position[ticker] * price
 
-            self.networth = self.networth.append({'date':date, 'timestamp':timeStamp, 'networth':current_networth}, ignore_index=True)
+            self.networth = pd.concat([self.networth, pd.DataFrame({'date':date, 'timestamp':timeStamp, 'networth':current_networth}, index=[0])])
             self.networth.to_csv('./networth.csv', index=False)
 
             print(execution.outputAsArray())
             return None
         elif ((marketData is not None) and (isinstance(marketData, OrderBookSnapshot_FiveLevels))) and (execution is None):
             current_market_data = marketData.outputAsDataFrame()
+
             current_date = current_market_data.iloc[0]['date']
             current_time = current_market_data.iloc[0]['time']
             #handle new market data, then create a new order and send it via quantTradingPlatform if needed
             #If it is the first time to receive market data, initialize the networth, cash
             if self.networth.empty:
-                self.networth = self.networth.append({'date':current_date, 'timestamp':current_time, 'networth':1000000}, ignore_index=True)
+                self.networth = pd.DataFrame({'date':current_date, 'timestamp':current_time, 'networth':1000}, index=[0])
             if self.cash.empty:
-                self.cash = self.cash.append({'date':current_date, 'timestamp':current_time, 'cash':1000000}, ignore_index=True)
+                self.cash = pd.DataFrame({'date':current_date, 'timestamp':current_time, 'cash':1000}, index=[0])
 
             #update networth if there is an open position, and save all self dataframe to a local csv file (override), path is hardcoded "./"
 
@@ -134,7 +136,7 @@ class QuantStrategy(Strategy):
             current_cash = self.cash.iloc[-1]['cash']
             #check if self.cash has the same date as current_date, if not, add a new row to self.cash
             if self.cash.iloc[-1]['date'] != current_date:
-                self.cash = self.cash.append({'date': current_date, 'timestamp': current_time, 'cash': current_cash},ignore_index=True)
+                self.cash = pd.concat([self.cash, pd.DataFrame({'date': current_date, 'timestamp': current_time, 'cash': current_cash}, index=[0])])
 
             current_networth = current_cash
             if len(self.current_position) > 0:
@@ -144,14 +146,14 @@ class QuantStrategy(Strategy):
                     if ticker not in current_market_data['ticker'].values:
                         continue
                     current_price = (current_market_data.loc[current_market_data['ticker'] == ticker]['askPrice1'].values[0] + current_market_data.loc[current_market_data['ticker'] == ticker]['bidPrice1'].values[0])/2
-                    self.position_price = self.position_price.append({'date':current_date, 'timestamp':current_time, 'ticker':ticker, 'price':current_price}, ignore_index=True)
+                    self.position_price = pd.concat([self.position_price, pd.DataFrame({'date':current_date, 'timestamp':current_time, 'ticker':ticker, 'price':current_price}, index=[0])])
 
                 for ticker in self.current_position.keys():
                     current_networth += self.current_position[ticker] * self.position_price.loc[self.position_price['ticker'] == ticker].iloc[-1]['price']
 
             # check if self.networth has the same date as current_date, if not, add a new row to self.networth, if so, update the networth
             if self.networth.iloc[-1]['date'] != current_date:
-                self.networth = self.networth.append({'date': current_market_data.iloc[0]['date'], 'timestamp': marketData.iloc[0]['time'],'networth': current_networth}, ignore_index=True)
+                self.networth = pd.concat([self.networth, pd.DataFrame({'date': current_market_data.iloc[0]['date'], 'timestamp': current_market_data.iloc[0]['time'],'networth': current_networth}, index=[0])])
             else:
                 self.networth.loc[self.networth['date'] == current_date, 'networth'] = current_networth
 
@@ -166,9 +168,11 @@ class QuantStrategy(Strategy):
                 ticker = "testTicker"
                 direction = random.choice(["Buy", "Sell"])
 
-                #debug only, if there is no current position and the direction is Sell, change the direction to Buy
+                #debug only, if there is no current position and the direction is Sell, change the direction to Buy; if there is no cash, change the direction to Sell
                 if (len(self.current_position) == 0):
                     direction = 'Buy'
+                elif (current_cash <= 0):
+                    direction = 'Sell'
                 else:
                     if ticker in self.current_position.keys():
                         if self.current_position[ticker] <= 0:
@@ -176,9 +180,9 @@ class QuantStrategy(Strategy):
 
 
                 current_price = (current_market_data.loc[current_market_data['ticker'] == ticker]['askPrice1'].values[0] +current_market_data.loc[current_market_data['ticker'] == ticker]['bidPrice1'].values[0]) / 2
-                tradeOrder = SingleStockOrder('testTicker', '2019-07-05', time.asctime(time.localtime(time.time())),time.asctime(time.localtime(time.time())), 'New', direction, current_price, 100, 'MO')
+                tradeOrder = SingleStockOrder('testTicker', datetime.datetime.now().strftime('%Y-%m-%d'), datetime.datetime.now(), datetime.datetime.now(), 'New', direction, current_price, 100, 'MO')
                 date, ticker, submissionTime, orderID, currStatus, currStatusTime, direction, price, size, type = tradeOrder.outputAsArray()
-                self.submitted_order = self.submitted_order.append({'date':date, 'submissionTime':submissionTime, 'ticker':ticker, 'orderID':orderID, 'currStatus':currStatus, 'currStatusTime':currStatusTime, 'direction':direction, 'price':price, 'size':size, 'type':type}, ignore_index=True)
+                self.submitted_order = pd.concat([self.submitted_order, pd.DataFrame({'date':date, 'submissionTime':submissionTime, 'ticker':ticker, 'orderID':orderID, 'currStatus':currStatus, 'currStatusTime':currStatusTime, 'direction':direction, 'price':price, 'size':size, 'type':type}, index=[0])])
                 self.submitted_order.to_csv('./submitted_order.csv', index=False)
 
             return tradeOrder

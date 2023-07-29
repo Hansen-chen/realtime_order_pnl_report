@@ -14,8 +14,11 @@ from common.SingleStockOrder import SingleStockOrder
 from common.SingleStockExecution import SingleStockExecution
 import pandas as pd
 import random
-
-#TODO: use dash plotly to plot realtime networth
+import dash
+from dash import dcc, dash_table,html
+from dash.dependencies import Input, Output
+import plotly.graph_objs as go
+import multiprocessing
 
 class QuantStrategy(Strategy):
     
@@ -41,7 +44,70 @@ class QuantStrategy(Strategy):
         self.submitted_order.to_csv('./submitted_order.csv', index=False)
         self.executed_order.to_csv('./executed_order.csv', index=False)
 
-        #TODO: initiate dash plotly app
+        # initiate dash plotly app
+        # Set up the app
+        app = dash.Dash(__name__)
+
+        # Define the layout
+        app.layout = html.Div([
+            html.Div(children='HFT Quantitative Strategy Dashboard'),
+            html.Hr(),
+            html.Div([
+                dcc.Graph(id='my-graph', animate=False),
+                dcc.Interval(
+                    id='interval-component-1',
+                    interval=3000,  # Refresh every 3 second
+                    n_intervals=0
+                )
+            ]),
+            # TODO: metrics table
+            html.Div([
+                dash_table.DataTable(data=self.submitted_order.to_dict('records'), page_size=10, id='order-table',columns=[{"name": i, "id": i} for i in self.submitted_order.columns]),
+                dcc.Interval(
+                    id='interval-component-2',
+                    interval=3000,  # Refresh every 3 second
+                    n_intervals=0
+                )
+            ])
+        ])
+
+
+
+        # Define the callback function
+        @app.callback(Output('my-graph', 'figure'),Input('interval-component-1', 'n_intervals'))
+        def update_graph(n):
+            # Read the CSV file
+            df = pd.read_csv('./networth.csv')
+            df['timestamp'] = pd.to_datetime(df['timestamp'])
+            df.index = df['timestamp']
+
+            #get the latest timestamp and convert it to string
+            latest_timestamp = str(df.iloc[-1]['timestamp'])
+
+            # Create the graph
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=df.index, y=df['networth'], mode='lines', name='Networth'))
+            fig.update_layout(title='Portfolio Value at '+latest_timestamp, xaxis_title='Date', yaxis_title='Networth')
+
+            return fig
+
+        @app.callback(
+            Output('order-table', 'data'),
+            Input('interval-component-2', 'n_intervals')
+        )
+        def update_table1(n):
+            # Load data into Pandas DataFrame
+            df = pd.read_csv('./submitted_order.csv')
+
+            # Return the DataFrame as a list of dictionaries
+            return df.to_dict('records')
+
+        # Define the function to run the server
+        def run_server():
+            app.run_server(debug=True)
+
+        #server_process = multiprocessing.Process(target=run_server)
+        #server_process.start()
 
     def getStratDay(self):
         return self.day

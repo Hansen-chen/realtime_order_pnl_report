@@ -4,20 +4,20 @@ Created on Fri Jul  5 23:47:43 2019
 
 @author: hongsong chou
 """
-
+import random
 class SingleStockOrder():
     
-    def __init__(self, ticker, date, submissionTime):
-        self.orderID = 0
+    def __init__(self, ticker, date, submissionTime,currStatusTime,currStatus,direction,price,size,type):
+        self.orderID = random.randint(0,100000)
         self.ticker = ticker
         self.date = date
         self.submissionTime = submissionTime
-        self.currStatusTime = None
-        self.currStatus = None #"New", "Filled", "PartiallyFilled", "Cancelled"
-        self.direction = None
-        self.price = None
-        self.size = None
-        self.type = None #"MLO", "LO", "MO", "TWAP"
+        self.currStatusTime = currStatusTime
+        self.currStatus = currStatus #"New", "Filled", "PartiallyFilled", "Cancelled"
+        self.direction = direction
+        self.price = price
+        self.size = size
+        self.type = type #"MLO", "LO", "MO", "TWAP"
 
     def outputAsArray(self):
         output = []

@@ -77,6 +77,14 @@ class QuantStrategy(Strategy):
                             n_intervals=0
                         )
                     ])]),
+                dbc.Row(
+                    dbc.Col(
+                        html.H4(
+                            "Portfolio Metrics",
+                            className="text-center bg-primary text-white p-2",
+                        ),
+                    )
+                ),
                 dbc.Row([
                     dbc.Col([
                         dash_table.DataTable(data=self.metrics.to_dict('records'), page_size=10,
@@ -89,6 +97,14 @@ class QuantStrategy(Strategy):
                         )
                     ])
                 ]),
+                dbc.Row(
+                    dbc.Col(
+                        html.H4(
+                            "Portfolio Holdings",
+                            className = "text-center bg-primary text-white p-2",
+                        ),
+                    )
+                ),
                 dbc.Row([
                     dbc.Col([
                         dash_table.DataTable(data=self.current_position_dataframe.to_dict('records'), page_size=10,
@@ -101,6 +117,14 @@ class QuantStrategy(Strategy):
                         )
                     ])
                 ]),
+                dbc.Row(
+                    dbc.Col(
+                        html.H4(
+                            "Submitted Orders",
+                            className="text-center bg-primary text-white p-2",
+                        ),
+                    )
+                ),
                 dbc.Row([
                     dbc.Col([
                         dash_table.DataTable(data=self.submitted_order.to_dict('records'), page_size=10,
@@ -114,8 +138,6 @@ class QuantStrategy(Strategy):
                     ])
                 ])
             ],fluid=True)
-
-
 
         # Define the callback function
         @app.callback(Output('my-graph', 'figure'),Input('interval-component-1', 'n_intervals'))
@@ -142,6 +164,9 @@ class QuantStrategy(Strategy):
         def update_table1(n):
             # Load data into Pandas DataFrame
             df = pd.read_csv('./submitted_order.csv')
+
+            #sort the dataframe by submissionTime in descending order, and then currStatus = 'New' first, other currStatus second
+            df = df.sort_values(by=['submissionTime','currStatus'], ascending=[False, True])
 
             # Return the DataFrame as a list of dictionaries
             return df.to_dict('records')

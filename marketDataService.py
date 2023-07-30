@@ -24,6 +24,7 @@ class MarketDataService:
             time.sleep(5)
 
     def produce_quote(self, marketData_2_exchSim_q, marketData_2_platform_q):
+        #TODO: read from file
         bidPrice, askPrice, bidSize, askSize = [], [], [], []
         bidPrice1 = 20+random.randint(0,100)/10
         askPrice1 = bidPrice1 + 0.01

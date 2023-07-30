@@ -280,6 +280,8 @@ class QuantStrategy(Strategy):
             print(execution.outputAsArray())
             return None
         elif ((marketData is not None) and (isinstance(marketData, OrderBookSnapshot_FiveLevels))) and (execution is None):
+            #TODO: save market data to a local csv file, path is hardcoded "./"
+
             current_market_data = marketData.outputAsDataFrame()
 
             current_date = current_market_data.iloc[0]['date']
@@ -359,6 +361,9 @@ class QuantStrategy(Strategy):
             self.metrics.to_csv('./metrics.csv', index=False)
 
             tradeOrder = None
+
+
+            #TODO: decide the tradeOrder
 
             if random.choice([True, False]):
                 ticker = "testTicker"

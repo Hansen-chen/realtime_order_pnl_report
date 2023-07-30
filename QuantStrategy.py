@@ -76,7 +76,16 @@ class QuantStrategy(Strategy):
                             interval=3000,  # Refresh every 3 second
                             n_intervals=0
                         )
-                    ])]),
+                    ]),
+                    dbc.Col([
+                        dcc.Graph(id='position-graph', animate=False),
+                        dcc.Interval(
+                            id='interval-component-4',
+                            interval=3000,  # Refresh every 3 second
+                            n_intervals=0
+                        )
+                    ])
+                ]),
                 dbc.Row(
                     dbc.Col(
                         html.H4(
@@ -95,27 +104,7 @@ class QuantStrategy(Strategy):
                             interval=3000,  # Refresh every 3 second
                             n_intervals=0
                         )
-                    ])
-                ]),
-                dbc.Row(
-                    dbc.Col(
-                        html.H4(
-                            "Portfolio Holdings",
-                            className = "text-center bg-primary text-white p-2",
-                        ),
-                    )
-                ),
-                dbc.Row([
-                    dbc.Col([
-                        dash_table.DataTable(data=self.current_position_dataframe.to_dict('records'), page_size=10,
-                                             id='position-table',
-                                             columns=[{"name": i, "id": i} for i in self.current_position_dataframe.columns]),
-                        dcc.Interval(
-                            id='interval-component-4',
-                            interval=3000,  # Refresh every 3 second
-                            n_intervals=0
-                        )
-                    ])
+                    ]),
                 ]),
                 dbc.Row(
                     dbc.Col(
@@ -181,15 +170,18 @@ class QuantStrategy(Strategy):
             # Return the DataFrame as a list of dictionaries
             return df.to_dict('records')
         @app.callback(
-            Output('position-table', 'data'),
+            Output('position-graph', 'figure'),
             Input('interval-component-4', 'n_intervals')
         )
-        def update_table3(n):
+        def update_graph2(n):
             # Load data into Pandas DataFrame
             df = pd.read_csv('./current_position.csv')
 
-            # Return the DataFrame as a list of dictionaries
-            return df.to_dict('records')
+            # Create the graph as a pie chart
+            fig = go.Figure(data=[go.Pie(labels=df['ticker'], values=df['quantity']*df['price'],textinfo="label+percent",textposition="inside")])
+            fig.update_layout(title='Current Position')
+
+            return fig
 
         # Define the function to run the server
         def run_server():

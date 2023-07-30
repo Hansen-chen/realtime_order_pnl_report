@@ -16,6 +16,7 @@ import pandas as pd
 import random
 import dash
 from dash import dcc, dash_table,html
+import dash_bootstrap_components as dbc
 from dash.dependencies import Input, Output
 import plotly.graph_objs as go
 import multiprocessing
@@ -43,33 +44,44 @@ class QuantStrategy(Strategy):
         self.position_price.to_csv('./position_price.csv', index=False)
         self.submitted_order.to_csv('./submitted_order.csv', index=False)
         self.executed_order.to_csv('./executed_order.csv', index=False)
+        #TODO: self metrics dataframe
 
         # initiate dash plotly app
         # Set up the app
         app = dash.Dash(__name__)
 
         # Define the layout
-        app.layout = html.Div([
-            html.Div(children='HFT Quantitative Strategy Dashboard'),
-            html.Hr(),
-            html.Div([
-                dcc.Graph(id='my-graph', animate=False),
-                dcc.Interval(
-                    id='interval-component-1',
-                    interval=3000,  # Refresh every 3 second
-                    n_intervals=0
-                )
-            ]),
-            # TODO: metrics table
-            html.Div([
-                dash_table.DataTable(data=self.submitted_order.to_dict('records'), page_size=10, id='order-table',columns=[{"name": i, "id": i} for i in self.submitted_order.columns]),
-                dcc.Interval(
-                    id='interval-component-2',
-                    interval=3000,  # Refresh every 3 second
-                    n_intervals=0
-                )
-            ])
-        ])
+        app.layout = dbc.Container(
+            [
+                dbc.Row(
+                    dbc.Col(
+                        html.H2(
+                            "HFT Quantitative Strategy Dashboard",
+                            className="text-center bg-primary text-white p-2",
+                        ),
+                    )
+                ),
+
+                dbc.Row([
+                    dbc.Col([
+                        dcc.Graph(id='my-graph', animate=False),
+                        dcc.Interval(
+                            id='interval-component-1',
+                            interval=3000,  # Refresh every 3 second
+                            n_intervals=0
+                        )
+                    ]),
+                    # TODO: metrics table
+                    dbc.Col([
+                        dash_table.DataTable(data=self.submitted_order.to_dict('records'), page_size=10, id='order-table',columns=[{"name": i, "id": i} for i in self.submitted_order.columns]),
+                        dcc.Interval(
+                            id='interval-component-2',
+                            interval=3000,  # Refresh every 3 second
+                            n_intervals=0
+                        )
+                    ])
+                ])
+            ],fluid=True)
 
 
 
@@ -192,16 +204,16 @@ class QuantStrategy(Strategy):
             #handle new market data, then create a new order and send it via quantTradingPlatform if needed
             #If it is the first time to receive market data, initialize the networth, cash
             if self.networth.empty:
-                self.networth = pd.DataFrame({'date':current_date, 'timestamp':current_time, 'networth':10000}, index=[0])
+                self.networth = pd.DataFrame({'date':current_date, 'timestamp':current_time, 'networth':10000.0}, index=[0])
             if self.cash.empty:
-                self.cash = pd.DataFrame({'date':current_date, 'timestamp':current_time, 'cash':10000}, index=[0])
+                self.cash = pd.DataFrame({'date':current_date, 'timestamp':current_time, 'cash':10000.0}, index=[0])
 
             #update networth if there is an open position, and save all self dataframe to a local csv file (override), path is hardcoded "./"
 
             #update current cash with the cash from the last row of self.cash
             current_cash = self.cash.iloc[-1]['cash']
-            #check if self.cash has the same date as current_date, if not, add a new row to self.cash
-            if self.cash.iloc[-1]['date'] != current_date:
+            #check if self.cash has the same time as current_time, if not, add a new row to self.cash
+            if self.cash.iloc[-1]['timestamp'] != current_time:
                 self.cash = pd.concat([self.cash, pd.DataFrame({'date': current_date, 'timestamp': current_time, 'cash': current_cash}, index=[0])])
 
             current_networth = current_cash
@@ -218,10 +230,10 @@ class QuantStrategy(Strategy):
                     current_networth += self.current_position[ticker] * self.position_price.loc[self.position_price['ticker'] == ticker].iloc[-1]['price']
 
             # check if self.networth has the same date as current_date, if not, add a new row to self.networth, if so, update the networth
-            if self.networth.iloc[-1]['date'] != current_date:
-                self.networth = pd.concat([self.networth, pd.DataFrame({'date': current_market_data.iloc[0]['date'], 'timestamp': current_market_data.iloc[0]['time'],'networth': current_networth}, index=[0])])
+            if self.networth.iloc[-1]['timestamp'] != current_time:
+                self.networth = pd.concat([self.networth, pd.DataFrame({'date': current_date, 'timestamp': current_time,'networth': current_networth}, index=[0])])
             else:
-                self.networth.loc[self.networth['date'] == current_date, 'networth'] = current_networth
+                self.networth.loc[self.networth['timestamp'] == current_time, 'networth'] = current_networth
 
             #save all self dataframe to a local csv file (override), path is hardcoded "./"
             self.networth.to_csv('./networth.csv', index=False)

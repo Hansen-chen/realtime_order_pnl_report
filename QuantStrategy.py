@@ -106,8 +106,8 @@ class QuantStrategy(Strategy):
         def run_server():
             app.run_server(debug=True)
 
-        #server_process = multiprocessing.Process(target=run_server)
-        #server_process.start()
+        server_process = multiprocessing.Process(target=run_server)
+        server_process.start()
 
     def getStratDay(self):
         return self.day
@@ -192,9 +192,9 @@ class QuantStrategy(Strategy):
             #handle new market data, then create a new order and send it via quantTradingPlatform if needed
             #If it is the first time to receive market data, initialize the networth, cash
             if self.networth.empty:
-                self.networth = pd.DataFrame({'date':current_date, 'timestamp':current_time, 'networth':1000}, index=[0])
+                self.networth = pd.DataFrame({'date':current_date, 'timestamp':current_time, 'networth':10000}, index=[0])
             if self.cash.empty:
-                self.cash = pd.DataFrame({'date':current_date, 'timestamp':current_time, 'cash':1000}, index=[0])
+                self.cash = pd.DataFrame({'date':current_date, 'timestamp':current_time, 'cash':10000}, index=[0])
 
             #update networth if there is an open position, and save all self dataframe to a local csv file (override), path is hardcoded "./"
 

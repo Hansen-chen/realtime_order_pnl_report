@@ -20,6 +20,7 @@ import dash_bootstrap_components as dbc
 from dash.dependencies import Input, Output
 import plotly.graph_objs as go
 import multiprocessing
+import numpy as np
 
 class QuantStrategy(Strategy):
     
@@ -38,13 +39,18 @@ class QuantStrategy(Strategy):
         # executed_order is a dataframe with columns: date, ticker, timeStamp, execID, orderID, direction, price, size, comm
         self.executed_order = pd.DataFrame(columns=['date','ticker','timeStamp','execID','orderID','direction','price','size','comm'])
         self.current_position = {}  # {'ticker':quantity}
+        self.current_position_dataframe = pd.DataFrame(columns=['ticker','quantity','price'])
+        # self metrics dataframe
+        self.metrics = pd.DataFrame(columns=['cumulative_return','portfolio_volatility','max_drawdown'])
         #Save all the dataframes to local csv files, path is hardcoded "./"
         self.networth.to_csv('./networth.csv', index=False)
         self.cash.to_csv('./cash.csv', index=False)
         self.position_price.to_csv('./position_price.csv', index=False)
         self.submitted_order.to_csv('./submitted_order.csv', index=False)
         self.executed_order.to_csv('./executed_order.csv', index=False)
-        #TODO: self metrics dataframe
+        self.current_position_dataframe.to_csv('./current_position.csv', index=False)
+        self.metrics.to_csv('./metrics.csv', index=False)
+
 
         # initiate dash plotly app
         # Set up the app
@@ -70,10 +76,36 @@ class QuantStrategy(Strategy):
                             interval=3000,  # Refresh every 3 second
                             n_intervals=0
                         )
-                    ]),
-                    # TODO: metrics table
+                    ])]),
+                dbc.Row([
                     dbc.Col([
-                        dash_table.DataTable(data=self.submitted_order.to_dict('records'), page_size=10, id='order-table',columns=[{"name": i, "id": i} for i in self.submitted_order.columns]),
+                        dash_table.DataTable(data=self.metrics.to_dict('records'), page_size=10,
+                                             id='metrics-table',
+                                             columns=[{"name": i, "id": i} for i in self.metrics.columns]),
+                        dcc.Interval(
+                            id='interval-component-3',
+                            interval=3000,  # Refresh every 3 second
+                            n_intervals=0
+                        )
+                    ])
+                ]),
+                dbc.Row([
+                    dbc.Col([
+                        dash_table.DataTable(data=self.current_position_dataframe.to_dict('records'), page_size=10,
+                                             id='position-table',
+                                             columns=[{"name": i, "id": i} for i in self.current_position_dataframe.columns]),
+                        dcc.Interval(
+                            id='interval-component-4',
+                            interval=3000,  # Refresh every 3 second
+                            n_intervals=0
+                        )
+                    ])
+                ]),
+                dbc.Row([
+                    dbc.Col([
+                        dash_table.DataTable(data=self.submitted_order.to_dict('records'), page_size=10,
+                                             id='order-table',
+                                             columns=[{"name": i, "id": i} for i in self.submitted_order.columns]),
                         dcc.Interval(
                             id='interval-component-2',
                             interval=3000,  # Refresh every 3 second
@@ -110,6 +142,26 @@ class QuantStrategy(Strategy):
         def update_table1(n):
             # Load data into Pandas DataFrame
             df = pd.read_csv('./submitted_order.csv')
+
+            # Return the DataFrame as a list of dictionaries
+            return df.to_dict('records')
+        @app.callback(
+            Output('metrics-table', 'data'),
+            Input('interval-component-3', 'n_intervals')
+        )
+        def update_table2(n):
+            # Load data into Pandas DataFrame
+            df = pd.read_csv('./metrics.csv')
+
+            # Return the DataFrame as a list of dictionaries
+            return df.to_dict('records')
+        @app.callback(
+            Output('position-table', 'data'),
+            Input('interval-component-4', 'n_intervals')
+        )
+        def update_table3(n):
+            # Load data into Pandas DataFrame
+            df = pd.read_csv('./current_position.csv')
 
             # Return the DataFrame as a list of dictionaries
             return df.to_dict('records')
@@ -194,6 +246,37 @@ class QuantStrategy(Strategy):
             self.networth = pd.concat([self.networth, pd.DataFrame({'date':date, 'timestamp':timeStamp, 'networth':current_networth}, index=[0])])
             self.networth.to_csv('./networth.csv', index=False)
 
+            #update self.current_position_dataframe's row with ticker, price and self.current_position
+            if ticker in self.current_position_dataframe['ticker'].values:
+                self.current_position_dataframe.loc[self.current_position_dataframe['ticker'] == ticker, 'price'] = price
+                self.current_position_dataframe.loc[self.current_position_dataframe['ticker'] == ticker, 'quantity'] = self.current_position[ticker]
+            else:
+                self.current_position_dataframe = pd.concat([self.current_position_dataframe, pd.DataFrame({'ticker':ticker, 'price':price, 'quantity':self.current_position[ticker]}, index=[0])])
+
+            self.current_position_dataframe.to_csv('./current_position.csv', index=False)
+
+            #update self.metrics with self.networth if self.networth has more than 1 row
+            if self.networth.shape[0] > 1:
+                cumulative_return = (self.networth.iloc[-1]['networth'] / self.networth.iloc[0]['networth'] - 1) * 100
+
+                # calculate portfolio volatility
+                portfolio_volatility = self.networth['networth'].pct_change().std() * 100
+
+                # calculate max drawdown
+                max_drawdown = 0
+                for i in range(1, len(self.networth)):
+                    if self.networth.iloc[i]['networth'] > self.networth.iloc[i - 1]['networth']:
+                        continue
+                    else:
+                        drawdown = (self.networth.iloc[i]['networth'] / self.networth.iloc[i - 1]['networth'] - 1) * 100
+                        if drawdown < max_drawdown:
+                            max_drawdown = drawdown
+
+                self.metrics = pd.DataFrame({'cumulative_return': cumulative_return, 'portfolio_volatility': portfolio_volatility,'max_drawdown': max_drawdown}, index=[0])
+
+
+
+
             print(execution.outputAsArray())
             return None
         elif ((marketData is not None) and (isinstance(marketData, OrderBookSnapshot_FiveLevels))) and (execution is None):
@@ -208,7 +291,15 @@ class QuantStrategy(Strategy):
             if self.cash.empty:
                 self.cash = pd.DataFrame({'date':current_date, 'timestamp':current_time, 'cash':10000.0}, index=[0])
 
-            #update networth if there is an open position, and save all self dataframe to a local csv file (override), path is hardcoded "./"
+            if self.current_position_dataframe.empty:
+                self.current_position_dataframe = pd.DataFrame({'ticker':'cash','quantity':10000.0,'price':1}, index=[0])
+
+            if self.metrics.empty:
+                self.metrics = pd.DataFrame({'cumulative_return':0,'portfolio_volatility':0,'max_drawdown':0}, index=[0])
+
+
+
+            #update networth and current_position_dataframe if there is an open position, and save all self dataframe to a local csv file (override), path is hardcoded "./"
 
             #update current cash with the cash from the last row of self.cash
             current_cash = self.cash.iloc[-1]['cash']
@@ -235,10 +326,37 @@ class QuantStrategy(Strategy):
             else:
                 self.networth.loc[self.networth['timestamp'] == current_time, 'networth'] = current_networth
 
+
+            #construct self.current_position_dataframe from self.current_position, price and current cash
+            self.current_position_dataframe = pd.DataFrame({'ticker':list(self.current_position.keys()), 'quantity':list(self.current_position.values()), 'price':list(self.position_price.loc[self.position_price['timestamp'] == current_time]['price'])})
+            self.current_position_dataframe = pd.concat([self.current_position_dataframe, pd.DataFrame({'ticker':'cash','quantity':current_cash,'price':1}, index=[0])])
+
+            #update self.metrics with self.networth if self.networth has more than 1 row
+            if len(self.networth) > 1:
+                cumulative_return = (self.networth.iloc[-1]['networth'] / self.networth.iloc[0]['networth'] - 1)*100
+
+                #calculate portfolio volatility
+                portfolio_volatility = self.networth['networth'].pct_change().std() * 100
+
+                #calculate max drawdown
+                max_drawdown = 0
+                for i in range(1, len(self.networth)):
+                    if self.networth.iloc[i]['networth'] > self.networth.iloc[i-1]['networth']:
+                        continue
+                    else:
+                        drawdown = (self.networth.iloc[i]['networth'] / self.networth.iloc[i-1]['networth'] - 1)*100
+                        if drawdown < max_drawdown:
+                            max_drawdown = drawdown
+
+                self.metrics = pd.DataFrame({'cumulative_return': cumulative_return,'portfolio_volatility': portfolio_volatility, 'max_drawdown': max_drawdown}, index=[0])
+
+
             #save all self dataframe to a local csv file (override), path is hardcoded "./"
             self.networth.to_csv('./networth.csv', index=False)
             self.cash.to_csv('./cash.csv', index=False)
             self.position_price.to_csv('./position_price.csv', index=False)
+            self.current_position_dataframe.to_csv('./current_position_dataframe.csv', index=False)
+            self.metrics.to_csv('./metrics.csv', index=False)
 
             tradeOrder = None
 

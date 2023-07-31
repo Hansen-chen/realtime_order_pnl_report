@@ -258,7 +258,7 @@ class QuantStrategy(Strategy):
         Metrics = Base.classes.portfolio_metrics
         Networth = Base.classes.networth
 
-        #TODO: double check logic below?
+        #TODO: double check logic below? and add real time print screen?
 
         if (marketData is None) and (execution is None):
             return None

@@ -368,7 +368,12 @@ class QuantStrategy(Strategy):
                     self.position_price = pd.concat([self.position_price, pd.DataFrame({'date':current_date, 'timestamp':current_time, 'ticker':ticker, 'price':current_price}, index=[0])])
 
                 for ticker in self.current_position.keys():
+                    #check if ticker is in self.position_price, if not, skip this ticker
+                    if ticker not in self.position_price['ticker'].values:
+                        continue
+                    #update current_networth with the current price of ticker
                     current_networth += self.current_position[ticker] * self.position_price.loc[self.position_price['ticker'] == ticker].iloc[-1]['price']
+
 
             # check if self.networth has the same date as current_date, if not, add a new row to self.networth, if so, update the networth
             if self.networth.iloc[-1]['timestamp'] != current_time:
@@ -376,9 +381,17 @@ class QuantStrategy(Strategy):
             else:
                 self.networth.loc[self.networth['timestamp'] == current_time, 'networth'] = current_networth
 
+            print(self.current_position)
 
-            #construct self.current_position_dataframe from self.current_position, price and current cash
-            self.current_position_dataframe = pd.DataFrame({'ticker':list(self.current_position.keys()), 'quantity':list(self.current_position.values()), 'price':list(self.position_price.loc[self.position_price['timestamp'] == current_time]['price'])})
+            #construct self.current_position_dataframe from self.current_position, price and current cash, ticker by ticker
+            self.current_position_dataframe = pd.DataFrame(columns=['ticker','quantity','price'])
+            for ticker in self.current_position.keys():
+                #check if ticker is in self.position_price, if the price of this ticker is 0 and concate
+                if ticker not in self.position_price['ticker'].values:
+                    self.current_position_dataframe = pd.concat([self.current_position_dataframe, pd.DataFrame({'ticker':ticker,'quantity':self.current_position[ticker],'price':0}, index=[0])])
+                else:
+                    self.current_position_dataframe = pd.concat([self.current_position_dataframe, pd.DataFrame({'ticker':ticker,'quantity':self.current_position[ticker],'price':self.position_price.loc[self.position_price['ticker'] == ticker].iloc[-1]['price']}, index=[0])])
+
             self.current_position_dataframe = pd.concat([self.current_position_dataframe, pd.DataFrame({'ticker':'cash','quantity':current_cash,'price':1}, index=[0])])
 
             #update self.metrics with self.networth if self.networth has more than 1 row

@@ -392,7 +392,7 @@ class QuantStrategy(Strategy):
             self.networth.to_csv('./networth.csv', index=False)
             self.cash.to_csv('./cash.csv', index=False)
             self.position_price.to_csv('./position_price.csv', index=False)
-            self.current_position_dataframe.to_csv('./current_position_dataframe.csv', index=False)
+            self.current_position_dataframe.to_csv('./current_position.csv', index=False)
             self.metrics.to_csv('./metrics.csv', index=False)
 
             tradeOrder = None

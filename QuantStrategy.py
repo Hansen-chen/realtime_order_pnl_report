@@ -395,8 +395,8 @@ class QuantStrategy(Strategy):
             session = Session()
             session.begin()
 
-            networthes = session.query(Networth).all()
-            if len(networthes) == 0:
+            networthes = session.query(Networth).filter_by(networth=10000.0).first()
+            if networthes is None:
                 networth = Networth(date=current_date, timestamp=current_time, networth=10000.0)
                 session.add(networth)
                 session.commit()

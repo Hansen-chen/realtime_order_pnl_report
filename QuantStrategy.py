@@ -292,6 +292,11 @@ class QuantStrategy(Strategy):
             else:
                 self.current_position_dataframe = pd.concat([self.current_position_dataframe, pd.DataFrame({'ticker':ticker, 'price':price, 'quantity':self.current_position[ticker]}, index=[0])])
 
+            #update self.current_position_dataframe's ticker "cash" with price = 1 and current_cash
+            if 'cash' in self.current_position_dataframe['ticker'].values:
+                self.current_position_dataframe.loc[self.current_position_dataframe['ticker'] == 'cash', 'price'] = 1
+                self.current_position_dataframe.loc[self.current_position_dataframe['ticker'] == 'cash', 'quantity'] = current_cash
+
             self.current_position_dataframe.to_csv('./current_position.csv', index=False)
 
             #update self.metrics with self.networth if self.networth has more than 1 row

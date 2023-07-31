@@ -21,6 +21,8 @@ from dash.dependencies import Input, Output
 import plotly.graph_objs as go
 import multiprocessing
 import numpy as np
+import lightgbm as lgb
+
 
 class QuantStrategy(Strategy):
     
@@ -50,6 +52,15 @@ class QuantStrategy(Strategy):
         self.executed_order.to_csv('./executed_order.csv', index=False)
         self.current_position_dataframe.to_csv('./current_position.csv', index=False)
         self.metrics.to_csv('./metrics.csv', index=False)
+        # load model 
+        self.future2stock = {'JBF': 3443, 'QWF': 2388, 'HCF': 2498, 'DBF': 2610, 'EHF': 1319, 
+                             'IPF': 3035, 'IIF': 3006, 'QXF': 2615, 'PEF': 5425, 'NAF': 3105}
+        model_files = os.listdir('./modelParamsProd')
+        # list of models  model_DBF_Y_M_1
+        self.models = {}
+        for future_tick in self.future2stock.keys():
+                self.models[future_tick] = lgb.Booster(model_file='./modelParamsProd/model_{}_Y_M_1.txt'.format(future_tick))
+        
 
 
         # initiate dash plotly app

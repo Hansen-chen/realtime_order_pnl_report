@@ -10,7 +10,7 @@ from multiprocessing import Process, Queue
 from marketDataService import MarketDataService
 from exchangeSimulator import ExchangeSimulator
 from quantTradingPlatform import TradingPlatform
-multiprocessing.set_start_method('fork')
+# multiprocessing.set_start_method('fork')
 
 if __name__ == '__main__':
     ###########################################################################

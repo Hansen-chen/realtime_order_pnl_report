@@ -75,7 +75,7 @@ class QuantStrategy(Strategy):
 
         self.networth = pd.DataFrame(columns=['date','timestamp','networth'])
 
-        self.current_position = pd.DataFrame(columns=['ticker', 'quantity', 'price'])
+        self.current_position = pd.DataFrame(columns=['ticker', 'quantity', 'price','dollar_amount'])
 
 
         self.submitted_order = pd.DataFrame(
@@ -128,26 +128,6 @@ class QuantStrategy(Strategy):
                             n_intervals=0
                         )
                     ]),
-                    dbc.Col([
-                        dcc.Graph(id='position-graph', animate=False),
-                        dcc.Interval(
-                            id='interval-component-4',
-                            interval=5000,  # Refresh every 1 second
-                            n_intervals=0
-                        )
-                    ])
-                ]),
-                dbc.Row([
-                    dbc.Col([
-                        dash_table.DataTable(data=self.current_position.to_dict('records'), page_size=10,
-                                             id='position-table',
-                                             columns=[{"name": i, "id": i} for i in self.current_position.columns]),
-                        dcc.Interval(
-                            id='interval-component-5',
-                            interval=5000,  # Refresh every 1 second
-                            n_intervals=0
-                        )
-                    ]),
                 ]),
                 dbc.Row(
                     dbc.Col(
@@ -169,6 +149,29 @@ class QuantStrategy(Strategy):
                         )
                     ]),
                 ]),
+                dbc.Row([
+                    dbc.Col([
+                        dcc.Graph(id='position-graph', animate=False),
+                        dcc.Interval(
+                            id='interval-component-4',
+                            interval=5000,  # Refresh every 1 second
+                            n_intervals=0
+                        )
+                    ])
+                ]),
+                dbc.Row([
+                    dbc.Col([
+                        dash_table.DataTable(data=self.current_position.to_dict('records'), page_size=10,
+                                             id='position-table',
+                                             columns=[{"name": i, "id": i} for i in self.current_position.columns]),
+                        dcc.Interval(
+                            id='interval-component-5',
+                            interval=5000,  # Refresh every 1 second
+                            n_intervals=0
+                        )
+                    ]),
+                ]),
+
                 dbc.Row(
                     dbc.Col(
                         html.H4(
@@ -224,9 +227,12 @@ class QuantStrategy(Strategy):
 
             df_position = pd.read_sql_table('current_position', con=self.engine.connect())
 
+            #add a column to calculate the absolute total value of each position called dollar_amount
+            df_position['dollar_amount'] = abs(df_position['quantity'] * df_position['price'])
+
             # Create the graph as a pie chart
             fig_position = go.Figure(data=[
-                go.Pie(labels=df_position['ticker'], values=abs(df_position['quantity'] * df_position['price']), textinfo="label+percent",
+                go.Pie(labels=df_position['ticker'], values=df_position['dollar_amount'], textinfo="label+percent",
                        textposition="inside")])
             fig_position.update_layout(title='Current Position')
 
@@ -329,9 +335,9 @@ class QuantStrategy(Strategy):
             cash_position = session.query(Current_position).filter_by(ticker="cash").first()
 
             # update cash and networth and save to a local csv file, path is hardcoded "./"
-            if direction == 'Buy':
+            if direction == 'buy':
                 cash_position.quantity = cash_position.quantity - (price * size + comm)
-            elif direction == 'Sell':
+            elif direction == 'sell':
                 cash_position.quantity = cash_position.quantity + price * size - comm
 
             session.commit()
@@ -478,7 +484,7 @@ class QuantStrategy(Strategy):
                 current_price = (current_market_data.iloc[0]['askPrice1'] + current_market_data.iloc[0]['bidPrice1']) / 2
                 quantity = 100
                 #check if there is enough cash to buy
-                if (current_cash < current_price*quantity) and (direction == 'Buy'):
+                if (current_cash < current_price*quantity) and (direction == 'buy'):
                     print('Error: Not enough cash to buy')
                     return None
 

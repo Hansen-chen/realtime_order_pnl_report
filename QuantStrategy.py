@@ -296,6 +296,9 @@ class QuantStrategy(Strategy):
             if 'cash' in self.current_position_dataframe['ticker'].values:
                 self.current_position_dataframe.loc[self.current_position_dataframe['ticker'] == 'cash', 'price'] = 1
                 self.current_position_dataframe.loc[self.current_position_dataframe['ticker'] == 'cash', 'quantity'] = current_cash
+            else:
+                self.current_position_dataframe = pd.concat([self.current_position_dataframe, pd.DataFrame({'ticker':'cash', 'price':1, 'quantity':current_cash}, index=[0])])
+
 
             self.current_position_dataframe.to_csv('./current_position.csv', index=False)
 

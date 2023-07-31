@@ -101,7 +101,7 @@ class QuantStrategy(Strategy):
                 dbc.Row(
                     dbc.Col(
                         html.H4(
-                            "Portfolio Metrics",
+                            "Portfolio Metrics (%)",
                             className="text-center bg-primary text-white p-2",
                         ),
                     )

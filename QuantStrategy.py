@@ -329,6 +329,11 @@ class QuantStrategy(Strategy):
 
             current_market_data = marketData.outputAsDataFrame()
 
+            #check if askPrice1 or bidPrice1 is empty, if it is, print error and then return None
+            if current_market_data.iloc[0]['askPrice1'] == 0 or current_market_data.iloc[0]['bidPrice1'] == 0:
+                print('Error: askPrice1 or bidPrice1 is empty')
+                return None
+
             current_date = current_market_data.iloc[0]['date']
             current_time = current_market_data.iloc[0]['time']
             #handle new market data, then create a new order and send it via quantTradingPlatform if needed
@@ -409,7 +414,7 @@ class QuantStrategy(Strategy):
             #TODO: decide the tradeOrder
 
             if random.choice([True, False]):
-                ticker = "testTicker"
+                ticker = current_market_data['ticker'].values[0]
                 direction = random.choice(["Buy", "Sell"])
 
                 current_price = (current_market_data.loc[current_market_data['ticker'] == ticker]['askPrice1'].values[0] +current_market_data.loc[current_market_data['ticker'] == ticker]['bidPrice1'].values[0]) / 2
@@ -419,7 +424,7 @@ class QuantStrategy(Strategy):
                     print('Not enough cash to buy')
                     return None
 
-                tradeOrder = SingleStockOrder('testTicker', datetime.datetime.now().strftime('%Y-%m-%d'), datetime.datetime.now(), datetime.datetime.now(), 'New', direction, current_price,quantity , 'MO')
+                tradeOrder = SingleStockOrder(ticker, datetime.datetime.now().strftime('%Y-%m-%d'), datetime.datetime.now(), datetime.datetime.now(), 'New', direction, current_price,quantity , 'MO')
                 date, ticker, submissionTime, orderID, currStatus, currStatusTime, direction, price, size, type = tradeOrder.outputAsArray()
                 self.submitted_order = pd.concat([self.submitted_order, pd.DataFrame({'date':date, 'submissionTime':submissionTime, 'ticker':ticker, 'orderID':orderID, 'currStatus':currStatus, 'currStatusTime':currStatusTime, 'direction':direction, 'price':price, 'size':size, 'type':type}, index=[0])])
                 self.submitted_order.to_csv('./submitted_order.csv', index=False)

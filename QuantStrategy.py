@@ -22,7 +22,7 @@ import plotly.graph_objs as go
 import multiprocessing
 import numpy as np
 import lightgbm as lgb
-
+from featureGenerator import generate_features
 
 class QuantStrategy(Strategy):
     
@@ -34,6 +34,7 @@ class QuantStrategy(Strategy):
         self.networth = pd.DataFrame(columns=['date','timestamp','networth'])
         #cash is a dataframe with columns: date, timestamp, cash
         self.cash = pd.DataFrame(columns=['date','timestamp','cash'])
+        self.initial_cash_value = 1000000.0
         # position_price is a dataframe with columns: date, timestamp, ticker, price
         self.position_price = pd.DataFrame(columns=['date','timestamp','ticker','price'])
         # submitted_order is a dataframe with columns: date, submissionTime, ticker, orderID, currStatus, currStatusTime, direction, price, size, type
@@ -42,6 +43,7 @@ class QuantStrategy(Strategy):
         self.executed_order = pd.DataFrame(columns=['date','ticker','timeStamp','execID','orderID','direction','price','size','comm'])
         self.current_position = {}  # {'ticker':quantity}
         self.current_position_dataframe = pd.DataFrame(columns=['ticker','quantity','price'])
+        self.last_position_time = {}
         # self metrics dataframe
         self.metrics = pd.DataFrame(columns=['cumulative_return','portfolio_volatility','max_drawdown'])
         #Save all the dataframes to local csv files, path is hardcoded "./"
@@ -53,16 +55,16 @@ class QuantStrategy(Strategy):
         self.current_position_dataframe.to_csv('./current_position.csv', index=False)
         self.metrics.to_csv('./metrics.csv', index=False)
         # load model 
+        self.all_market_data = {}
         self.future2stock = {'JBF': 3443, 'QWF': 2388, 'HCF': 2498, 'DBF': 2610, 'EHF': 1319, 
                              'IPF': 3035, 'IIF': 3006, 'QXF': 2615, 'PEF': 5425, 'NAF': 3105}
-        model_files = os.listdir('./modelParamsProd')
-        # list of models  model_DBF_Y_M_1
+        self.stock2future = {v: k for k, v in self.future2stock.items()}
+        self.future_tickers = self.future2stock.keys()
+        self.stock_tickers = list(self.future2stock.values())
+        self.if_enough_data = False
         self.models = {}
-        for future_tick in self.future2stock.keys():
-                self.models[future_tick] = lgb.Booster(model_file='./modelParamsProd/model_{}_Y_M_1.txt'.format(future_tick))
-        
-
-
+        for future_ticker in self.future2stock.keys():
+            self.models[future_ticker] = lgb.Booster(model_file='./modelParamsProd/model_{}_Y_M_1.txt'.format(future_ticker))
         # initiate dash plotly app
         # Set up the app
         app = dash.Dash(__name__)
@@ -259,6 +261,7 @@ class QuantStrategy(Strategy):
                 self.submitted_order.to_csv('./submitted_order.csv', index=False)
 
             # update current position with ticker
+            self.current_position[ticker]
             if direction == 'Buy':
                 if ticker in self.current_position:
                     self.current_position[ticker] += size
@@ -337,9 +340,7 @@ class QuantStrategy(Strategy):
             return None
         elif ((marketData is not None) and (isinstance(marketData, OrderBookSnapshot_FiveLevels))) and (execution is None):
             #TODO: save market data to a local csv file, path is hardcoded "./"
-
-            current_market_data = marketData.outputAsDataFrame()
-
+            current_market_data = marketData.outputAsDataFrame()      
             #check if askPrice1 or bidPrice1 is empty, if it is, print error and then return None
             if current_market_data.iloc[0]['askPrice1'] == 0 or current_market_data.iloc[0]['bidPrice1'] == 0:
                 print('Error: askPrice1 or bidPrice1 is empty')
@@ -347,12 +348,15 @@ class QuantStrategy(Strategy):
 
             current_date = current_market_data.iloc[0]['date']
             current_time = current_market_data.iloc[0]['time']
+            current_ticker = current_market_data.iloc[0]['ticker']
+            current_price = (current_market_data.loc[current_market_data['ticker'] == ticker]['askPrice1'].values[0] + 
+                             current_market_data.loc[current_market_data['ticker'] == ticker]['bidPrice1'].values[0]) / 2
             #handle new market data, then create a new order and send it via quantTradingPlatform if needed
             #If it is the first time to receive market data, initialize the networth, cash
             if self.networth.empty:
-                self.networth = pd.DataFrame({'date':current_date, 'timestamp':current_time, 'networth':10000.0}, index=[0])
+                self.networth = pd.DataFrame({'date':current_date, 'timestamp':current_time, 'networth': self.initial_cash_value}, index=[0])
             if self.cash.empty:
-                self.cash = pd.DataFrame({'date':current_date, 'timestamp':current_time, 'cash':10000.0}, index=[0])
+                self.cash = pd.DataFrame({'date':current_date, 'timestamp':current_time, 'cash': self.initial_cash_value}, index=[0])
 
             if self.current_position_dataframe.empty:
                 self.current_position_dataframe = pd.DataFrame({'ticker':'cash','quantity':10000.0,'price':1}, index=[0])
@@ -431,29 +435,60 @@ class QuantStrategy(Strategy):
             self.position_price.to_csv('./position_price.csv', index=False)
             self.current_position_dataframe.to_csv('./current_position.csv', index=False)
             self.metrics.to_csv('./metrics.csv', index=False)
-
-            tradeOrder = None
-
-
-            #TODO: decide the tradeOrder
-
-            if random.choice([True, False]):
-                ticker = current_market_data['ticker'].values[0]
-                direction = random.choice(["Buy", "Sell"])
-
-                current_price = (current_market_data.loc[current_market_data['ticker'] == ticker]['askPrice1'].values[0] +current_market_data.loc[current_market_data['ticker'] == ticker]['bidPrice1'].values[0]) / 2
-                quantity = 100
-                #check if there is enough cash to buy
-                if (current_cash < current_price*quantity) and (direction == 'Buy'):
-                    print('Not enough cash to buy')
+            
+            # Save market data
+            # Check if we have this ticker's data, if not, we create a new dataframe, if have, we concat the new data to the old dataframe
+            if current_ticker not in self.all_market_data.keys():
+                self.all_market_data[current_ticker] = current_market_data
+            self.all_market_data[current_ticker] = pd.concat([self.all_market_data[current_ticker], current_market_data], ignore_index=True)
+            
+            # Since we just trade stock, we can check if it is future ticker, if it, we just save the data and return None
+            if current_ticker in self.future_tickers.keys():
+                return None
+            # Check if we have this ticker'position, if have, we cal the passed time, if passed time > 10s, we will balance the position, and make a new order decision
+            # check if the market data is enough to make a decision, which means at least 110 seconds
+            # if seconds < 110, we will return None since we don't have enough data to input into model
+            if self.if_enough_data == False:
+                stk_time_delta = (self.all_market_data[current_ticker]['time'].iloc[-1] - self.all_market_data[current_ticker]['time'].iloc[0]).total_seconds()
+                # find the stock ticker in future2stock's values where key = current_ticker
+                future_time_delta = (self.all_market_data[self.stock2future[current_ticker]]['time'].iloc[-1] - self.all_market_data[self.stock2future[current_ticker]]['time'].iloc[0]).total_seconds()
+                if stk_time_delta < 110 or future_time_delta < 110:
                     return None
-
-                tradeOrder = SingleStockOrder(ticker, datetime.datetime.now().strftime('%Y-%m-%d'), datetime.datetime.now(), datetime.datetime.now(), 'New', direction, current_price,quantity , 'MO')
-                date, ticker, submissionTime, orderID, currStatus, currStatusTime, direction, price, size, type = tradeOrder.outputAsArray()
-                self.submitted_order = pd.concat([self.submitted_order, pd.DataFrame({'date':date, 'submissionTime':submissionTime, 'ticker':ticker, 'orderID':orderID, 'currStatus':currStatus, 'currStatusTime':currStatusTime, 'direction':direction, 'price':price, 'size':size, 'type':type}, index=[0])])
-                self.submitted_order.to_csv('./submitted_order.csv', index=False)
-
-            return tradeOrder
+            self.if_enough_data = True
+            if current_ticker in self.current_position.keys():
+                # if holding time < 10s, we will return None
+                if (current_time - self.last_position_time[current_ticker]).total_seconds() < 10:
+                    return None
+                else:
+                    # we will balance the position
+                    direction = 'Buy' if self.current_position[current_ticker] < 0 else 'Sell'
+                    quantity = abs(self.current_position[current_ticker])
+                    tradeOrder = SingleStockOrder(ticker, datetime.datetime.now().strftime('%Y-%m-%d'), datetime.datetime.now(), 
+                                                  datetime.datetime.now(), 'New', direction, current_price,quantity , 'MO')
+            # if we don't have this ticker's position, we will make a new order decision
+            # get the latest 100 seconds market data and downsample by 10s and get the last data in each 10s
+            delay_100s = current_time - datetime.timedelta(seconds=110)
+            input_stock_data = self.all_market_data[current_ticker].loc[self.all_market_data[current_ticker]['time'] > delay_100s].resample('10s', on='time').last().reset_index()
+            input_future_data = self.all_market_data[self.stock2future[current_ticker]].loc[self.all_market_data[self.stock2future[current_ticker]]['time'] > delay_100s].resample('10s', on='time').last().reset_index()
+            # get feature
+            features_df = generate_features(input_stock_data, input_future_data)
+            # get prediction
+            prediction = self.models[current_ticker].predict(features_df).iloc[-1]
+            if prediction > 0:
+                direction = 'Buy'
+            elif prediction < 0:
+                direction = 'Sell'
+            else:
+                return None
+            # use 10% of cash to buy or sell for one stock
+            quantity = self.initial_cash_value * 0.1 // current_price
+            tradeOrder = SingleStockOrder(ticker, datetime.datetime.now().strftime('%Y-%m-%d'), datetime.datetime.now(),
+                                            datetime.datetime.now(), 'New', direction, current_price, quantity, 'MO')
+            # update last_position_time
+            self.last_position_time[current_ticker] = current_time
+            date, ticker, submissionTime, orderID, currStatus, currStatusTime, direction, price, size, type = tradeOrder.outputAsArray()
+            self.submitted_order = pd.concat([self.submitted_order, pd.DataFrame({'date':date, 'submissionTime':submissionTime, 'ticker':ticker, 'orderID':orderID, 'currStatus':currStatus, 'currStatusTime':currStatusTime, 'direction':direction, 'price':price, 'size':size, 'type':type}, index=[0])])
+            self.submitted_order.to_csv('./submitted_order.csv', index=False)
         else:
             return None
                 

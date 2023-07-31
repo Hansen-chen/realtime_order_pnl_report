@@ -37,7 +37,11 @@ class MarketDataService:
         print('[%d]MarketDataService>>>produce_quote' % (os.getpid()))
         print(quoteSnapshot.outputAsDataFrame())
         marketData_2_exchSim_q.put(quoteSnapshot)
+        time.sleep(2)
         marketData_2_platform_q.put(quoteSnapshot)
+        time.sleep(2)
+
+
 
         bidPrice, askPrice, bidSize, askSize = [], [], [], []
         bidPrice1 = 100+random.randint(0,100)/10
@@ -51,4 +55,6 @@ class MarketDataService:
         print('[%d]MarketDataService>>>produce_quote' % (os.getpid()))
         print(quoteSnapshot.outputAsDataFrame())
         marketData_2_exchSim_q.put(quoteSnapshot)
+        time.sleep(2)
         marketData_2_platform_q.put(quoteSnapshot)
+        time.sleep(2)

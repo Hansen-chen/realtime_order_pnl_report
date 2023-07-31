@@ -24,20 +24,21 @@ class ExchangeSimulator:
 
     def consume_md(self, marketData_2_exchSim_q):
         while True:
+            time.sleep(2)
             res = marketData_2_exchSim_q.get()
             print('[%d]ExchSim.consume_md' % (os.getpid()))
             print(res.outputAsDataFrame())
     
     def consume_order(self, platform_2_exchSim_order_q, exchSim_2_platform_execution_q):
         while True:
+            time.sleep(2)
             res = platform_2_exchSim_order_q.get()
             print('[%d]ExchSim.on_order' % (os.getpid()))
             print(res.outputAsArray())
             self.produce_execution(res, exchSim_2_platform_execution_q)
     
     def produce_execution(self, order, exchSim_2_platform_execution_q):
-        sleep_time = random.randint(1, 10)
-        time.sleep(sleep_time)
+        time.sleep(random.randint(1, 3))
         execution = SingleStockExecution(order.ticker, order.date, datetime.datetime.now(), order.orderID, order.size, order.price, order.direction)
         exchSim_2_platform_execution_q.put(execution)
         print('[%d]ExchSim.produce_execution' % (os.getpid()))

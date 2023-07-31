@@ -8,6 +8,7 @@ Created on Thu Jun 20 10:15:48 2020
 import threading
 import os
 from QuantStrategy import QuantStrategy
+import time
 
 class TradingPlatform:
     quantStrat = None
@@ -27,6 +28,7 @@ class TradingPlatform:
     def consume_marketData(self, platform_2_exchSim_order_q, marketData_2_platform_q):
         print('[%d]Platform.consume_marketData' % (os.getpid(),))
         while True:
+            time.sleep(2)
             res = marketData_2_platform_q.get()
             print('[%d] Platform.on_md' % (os.getpid()))
             print(res.outputAsDataFrame())
@@ -40,6 +42,7 @@ class TradingPlatform:
     def handle_execution(self, exchSim_2_platform_execution_q):
         print('[%d]Platform.handle_execution' % (os.getpid(),))
         while True:
+            time.sleep(2)
             execution = exchSim_2_platform_execution_q.get()
             print('[%d] Platform.handle_execution' % (os.getpid()))
             print(execution.outputAsArray())

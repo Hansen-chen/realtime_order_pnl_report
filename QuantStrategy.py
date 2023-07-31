@@ -22,7 +22,7 @@ import plotly.graph_objs as go
 import multiprocessing
 import numpy as np
 import lightgbm as lgb
-from featureGenerator import generate_features
+
 
 class QuantStrategy(Strategy):
     
@@ -467,11 +467,11 @@ class QuantStrategy(Strategy):
                                                   datetime.datetime.now(), 'New', direction, current_price,quantity , 'MO')
             # if we don't have this ticker's position, we will make a new order decision
             # get the latest 100 seconds market data and downsample by 10s and get the last data in each 10s
-            delay_100s = current_time - datetime.timedelta(seconds=110)
+            delay_100s = current_time - datetime.timedelta(seconds=100)
             input_stock_data = self.all_market_data[current_ticker].loc[self.all_market_data[current_ticker]['time'] > delay_100s].resample('10s', on='time').last().reset_index()
             input_future_data = self.all_market_data[self.stock2future[current_ticker]].loc[self.all_market_data[self.stock2future[current_ticker]]['time'] > delay_100s].resample('10s', on='time').last().reset_index()
             # get feature
-            features_df = generate_features(input_stock_data, input_future_data)
+            features_df = self.generate_features(input_stock_data, input_future_data)
             # get prediction
             prediction = self.models[current_ticker].predict(features_df).iloc[-1]
             if prediction > 0:
@@ -491,5 +491,142 @@ class QuantStrategy(Strategy):
             self.submitted_order.to_csv('./submitted_order.csv', index=False)
         else:
             return None
-                
         
+    def cal_slope(self, df):
+        bidSizes = [f'bidSize{i}' for i in range(1, 6)]
+        bidPrices = [f'bidPrice{i}' for i in range(1, 6)]
+        askSizes = [f'askSize{i}' for i in range(1, 6)]
+        askPrices = [f'askPrice{i}' for i in range(1, 6)]
+
+        df_bid = df[bidSizes + bidPrices].copy()
+        df_ask = df[askSizes + askPrices].copy()
+        df_bid.loc[:, bidPrices] = df_bid[bidPrices] / df[bidPrices[0]].values.reshape(-1, 1)
+        df_ask.loc[:, askPrices] = df_ask[askPrices] / df[askPrices[0]].values.reshape(-1, 1)
+        
+        bid_data = df_bid.values
+        ask_data = df_ask.values
+
+        cum_bid_sizes = np.cumsum(bid_data[:, :5], axis=1) / bid_data[:, :5].sum(axis=1, keepdims=True)
+        cum_ask_sizes = np.cumsum(ask_data[:, :5], axis=1) / ask_data[:, :5].sum(axis=1, keepdims=True)
+
+        bid_price = bid_data[:, 5:]
+        ask_price = ask_data[:, 5:]
+
+        X_bid = cum_bid_sizes - cum_bid_sizes.mean(axis=1, keepdims=True)
+        Y_bid = bid_price - bid_price.mean(axis=1, keepdims=True)
+        slope_b = (X_bid * Y_bid).sum(axis=1) / ((X_bid ** 2).sum(axis=1) + 1e-10)
+
+        X_ask = cum_ask_sizes - cum_ask_sizes.mean(axis=1, keepdims=True)
+        Y_ask = ask_price - ask_price.mean(axis=1, keepdims=True)
+        slope_a = (X_ask * Y_ask).sum(axis=1) / ((X_ask ** 2).sum(axis=1) + 1e-10)
+
+        return -slope_b, slope_a
+    
+    def generate_features(self, futureData_date, stockData_date):
+        basicCols = ['date', 'time', 'sAskPrice1','sBidPrice1','sMidQ', 'fAskPrice1','fBidPrice1', 'fMidQ', 'spreadRatio']
+        featureCols = []
+
+        for i in range(1, 11):        
+            featureCols.extend(['fLaggingRtn_{}'.format(str(i))])
+            featureCols.extend(['spreadRatio_{}'.format(str(i))])
+            featureCols.extend(['volumeImbalanceRatio_{}'.format(str(i))])
+            featureCols.extend(['slope_b_{}'.format(str(i))])
+            featureCols.extend(['slope_a_{}'.format(str(i))])
+            featureCols.extend(['slope_ab_{}'.format(str(i))])
+            featureCols.extend(['sLaggingRtn_{}'.format(str(i))])
+            featureCols.extend(['stockSpreadRatio_{}'.format(str(i))])
+            featureCols.extend(['stockVolumeImbalanceRatio_{}'.format(str(i))])
+            featureCols.extend(['stockSlope_b_{}'.format(str(i))])
+            featureCols.extend(['stockSlope_a_{}'.format(str(i))])
+            featureCols.extend(['stockSlope_ab_{}'.format(str(i))])
+            
+            for j in range(1, 6):
+                featureCols.extend(['fAskSize{}_{}'.format(str(j), str(i))])
+                featureCols.extend(['fBidSize{}_{}'.format(str(j), str(i))])
+                featureCols.extend(['sAskSize{}_{}'.format(str(j), str(i))])
+                featureCols.extend(['sBidSize{}_{}'.format(str(j), str(i))])
+
+        df = pd.DataFrame(index=stockData_date.index, columns=basicCols+featureCols)
+        df['date'] = stockData_date['date']
+        df['time'] = stockData_date['time']   
+            
+        # Normalize the size
+        fAskSizeMax = futureData_date[['askSize1', 'askSize2', 'askSize3', 'askSize4', 'askSize5']].max(axis=1)
+        fBidSizeMax = futureData_date[['bidSize1', 'bidSize2', 'bidSize3', 'bidSize4', 'bidSize5']].max(axis=1)
+        sAskSizeMax = stockData_date[['askSize1', 'askSize2', 'askSize3', 'askSize4', 'askSize5']].max(axis=1)
+        sBidSizeMax = stockData_date[['bidSize1', 'bidSize2', 'bidSize3', 'bidSize4', 'bidSize5']].max(axis=1)
+        
+        for i in range(1, 6):
+            df['fAskPrice{}'.format(str(i))] = futureData_date['askPrice{}'.format(str(i))]
+            df['fBidPrice{}'.format(str(i))] = futureData_date['bidPrice{}'.format(str(i))]
+            df['fAskSize{}'.format(str(i))] = futureData_date['askSize{}'.format(str(i))] / fAskSizeMax
+            df['fBidSize{}'.format(str(i))] = futureData_date['bidSize{}'.format(str(i))] / fBidSizeMax
+            
+            df['sAskPrice{}'.format(str(i))] = stockData_date['askPrice{}'.format(str(i))]
+            df['sBidPrice{}'.format(str(i))] = stockData_date['bidPrice{}'.format(str(i))]
+            df['sAskSize{}'.format(str(i))] = stockData_date['askSize{}'.format(str(i))] / sAskSizeMax
+            df['sBidSize{}'.format(str(i))] = stockData_date['bidSize{}'.format(str(i))] / sBidSizeMax
+        
+        df['fMidQ'] = (df['fAskPrice1'] + df['fBidPrice1']) / 2
+        df['slope_b'], df['slope_a'] = self.cal_slope(futureData_date)
+        df['slope_ab'] = df['slope_a'] - df['slope_b']
+        
+        # Order Imbalance Ratio (OIR)
+        ask = np.array([df['fAskPrice{}'.format(str(i))] * df['fAskSize{}'.format(str(i))] * (1 - (i - 1) / 5) for i in range(1, 6)]).sum(axis=0)
+        bid = np.array([df['fBidPrice{}'.format(str(i))] * df['fBidSize{}'.format(str(i))] * (1 - (i - 1) / 5) for i in range(1, 6)]).sum(axis=0)
+        df['spreadRatio'] = (ask - bid) / (ask + bid)
+
+        # Order Flow Imbalance (Only 1 level)
+        delta_size_bid = np.where(df['fBidPrice1'] < df['fBidPrice1'].shift(1), 0, np.where(df['fBidPrice1'] == df['fBidPrice1'].shift(1), df['fBidSize1'] - df['fBidSize1'].shift(1), df['fBidSize1']))
+        delta_size_ask = np.where(df['fAskPrice1'] > df['fAskPrice1'].shift(1), 0, np.where(df['fAskPrice1'] == df['fAskPrice1'].shift(1), df['fAskSize1'] - df['fAskSize1'].shift(1), df['fAskSize1']))
+        df['fOrderImbalance'] = (delta_size_bid - delta_size_ask) / (delta_size_bid + delta_size_ask)
+        # df['fOrderImbalance'] = (df['fOrderImbalance'] - df['fOrderImbalance'].rolling(10).mean()) / df['fOrderImbalance'].rolling(10).std()
+        
+        for i in range(1, 11):
+            df['fLaggingRtn_{}'.format(str(i))] = np.log(df['fMidQ']) - np.log(df['fMidQ'].shift(i))
+            df['spreadRatio_{}'.format(str(i))] = df['spreadRatio'].shift(i)
+            df['volumeImbalanceRatio_{}'.format(str(i))] = df['fOrderImbalance'].shift(i)
+            df['slope_b_{}'.format(str(i))] = df['slope_b'].shift(i)
+            df['slope_a_{}'.format(str(i))] = df['slope_a'].shift(i)
+            df['slope_ab_{}'.format(str(i))] = df['slope_ab'].shift(i)
+            
+            for j in range(1, 6):
+                df['fAskSize{}_{}'.format(str(j), str(i))] = df['fAskSize{}'.format(str(j))].shift(i)
+                df['fBidSize{}_{}'.format(str(j), str(i))] = df['fBidSize{}'.format(str(j))].shift(i)
+                df['sAskSize{}_{}'.format(str(j), str(i))] = df['sAskSize{}'.format(str(j))].shift(i)
+                df['sBidSize{}_{}'.format(str(j), str(i))] = df['sBidSize{}'.format(str(j))].shift(i)
+
+        # Add stock data
+        df['sMidQ'] = (stockData_date['askPrice1'] + stockData_date['bidPrice1']) / 2
+        df['sAskPrice1'] = stockData_date['askPrice1']
+        df['sBidPrice1'] = stockData_date['bidPrice1']
+        df['stockSlope_b'], df['stockSlope_a'] = self.cal_slope(stockData_date)
+        df['stockSlope_ab'] = df['stockSlope_a'] - df['stockSlope_b']
+        
+        ask = np.array([df['sAskPrice{}'.format(str(i))] * df['sAskSize{}'.format(str(i))] * (1 - (i - 1) / 5) for i in range(1, 6)]).sum(axis=0)
+        bid = np.array([df['sBidPrice{}'.format(str(i))] * df['sBidSize{}'.format(str(i))] * (1 - (i - 1) / 5) for i in range(1, 6)]).sum(axis=0)
+        df['stockSpreadRatio'] = (ask - bid) / (ask + bid)
+
+        delta_size_bid = np.where(df['sBidPrice1'] < df['sBidPrice1'].shift(1), 0, np.where(df['sBidPrice1'] == df['sBidPrice1'].shift(1), df['sBidSize1'] - df['sBidSize1'].shift(1), df['sBidSize1']))
+        delta_size_ask = np.where(df['sAskPrice1'] > df['sAskPrice1'].shift(1), 0, np.where(df['sAskPrice1'] == df['sAskPrice1'].shift(1), df['sAskSize1'] - df['sAskSize1'].shift(1), df['sAskSize1']))
+        df['stockOrderImbalance'] = (delta_size_bid - delta_size_ask) / (delta_size_bid + delta_size_ask)
+        # df['stockOrderImbalance'] = (df['stockOrderImbalance'] - df['stockOrderImbalance'].rolling(10).mean()) / df['stockOrderImbalance'].rolling(10).std()
+        
+        for i in range(1, 11):        
+            df['sLaggingRtn_{}'.format(str(i))] = np.log(df['sMidQ']) - np.log(df['sMidQ'].shift(i))
+            df['stockSpreadRatio_{}'.format(str(i))] = df['stockSpreadRatio'].shift(i)
+            df['stockVolumeImbalanceRatio_{}'.format(str(i))] = df['stockOrderImbalance'].shift(i)
+            df['stockSlope_b_{}'.format(str(i))] = df['stockSlope_b'].shift(i)
+            df['stockSlope_a_{}'.format(str(i))] = df['stockSlope_a'].shift(i)
+            df['stockSlope_ab_{}'.format(str(i))] = df['stockSlope_ab'].shift(i)
+            
+            for j in range(1, 6):
+                df['sAskSize{}_{}'.format(str(j), str(i))] = df['sAskSize{}'.format(str(j))].shift(i)
+                df['sBidSize{}_{}'.format(str(j), str(i))] = df['sBidSize{}'.format(str(j))].shift(i)
+        # Convert inf to nan to 0
+        df = df[featureCols].iloc[[-1]]
+        df = df.replace([np.inf, -np.inf], np.nan).fillna(0)
+        # get the last row
+        return df
+                    
+            

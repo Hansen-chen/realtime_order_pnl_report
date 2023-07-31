@@ -86,6 +86,18 @@ class QuantStrategy(Strategy):
                         )
                     ])
                 ]),
+                dbc.Row([
+                    dbc.Col([
+                        dash_table.DataTable(data=self.current_position_dataframe.to_dict('records'), page_size=10,
+                                             id='position-table',
+                                             columns=[{"name": i, "id": i} for i in self.current_position_dataframe.columns]),
+                        dcc.Interval(
+                            id='interval-component-5',
+                            interval=3000,  # Refresh every 3 second
+                            n_intervals=0
+                        )
+                    ]),
+                ]),
                 dbc.Row(
                     dbc.Col(
                         html.H4(
@@ -178,10 +190,20 @@ class QuantStrategy(Strategy):
             df = pd.read_csv('./current_position.csv')
 
             # Create the graph as a pie chart
-            fig = go.Figure(data=[go.Pie(labels=df['ticker'], values=df['quantity']*df['price'],textinfo="label+percent",textposition="inside")])
+            fig = go.Figure(data=[go.Pie(labels=df['ticker'], values=abs(df['quantity']*df['price']),textinfo="label+percent",textposition="inside")])
             fig.update_layout(title='Current Position')
 
             return fig
+        @app.callback(
+            Output('position-table', 'data'),
+            Input('interval-component-5', 'n_intervals')
+        )
+        def update_table2(n):
+            # Load data into Pandas DataFrame
+            df = pd.read_csv('./current_position.csv')
+
+            # Return the DataFrame as a list of dictionaries
+            return df.to_dict('records')
 
         # Define the function to run the server
         def run_server():
@@ -290,9 +312,7 @@ class QuantStrategy(Strategy):
                             max_drawdown = drawdown
 
                 self.metrics = pd.DataFrame({'cumulative_return': cumulative_return, 'portfolio_volatility': portfolio_volatility,'max_drawdown': max_drawdown}, index=[0])
-
-
-
+                self.metrics.to_csv('./metrics.csv', index=False)
 
             print(execution.outputAsArray())
             return None
@@ -315,8 +335,6 @@ class QuantStrategy(Strategy):
 
             if self.metrics.empty:
                 self.metrics = pd.DataFrame({'cumulative_return':0,'portfolio_volatility':0,'max_drawdown':0}, index=[0])
-
-
 
             #update networth and current_position_dataframe if there is an open position, and save all self dataframe to a local csv file (override), path is hardcoded "./"
 
@@ -351,7 +369,7 @@ class QuantStrategy(Strategy):
             self.current_position_dataframe = pd.concat([self.current_position_dataframe, pd.DataFrame({'ticker':'cash','quantity':current_cash,'price':1}, index=[0])])
 
             #update self.metrics with self.networth if self.networth has more than 1 row
-            if len(self.networth) > 1:
+            if self.networth.shape[0] > 1:
                 cumulative_return = (self.networth.iloc[-1]['networth'] / self.networth.iloc[0]['networth'] - 1)*100
 
                 #calculate portfolio volatility
@@ -386,19 +404,14 @@ class QuantStrategy(Strategy):
                 ticker = "testTicker"
                 direction = random.choice(["Buy", "Sell"])
 
-                #debug only, if there is no current position and the direction is Sell, change the direction to Buy; if there is no cash, change the direction to Sell
-                if (len(self.current_position) == 0):
-                    direction = 'Buy'
-                elif (current_cash <= 0):
-                    direction = 'Sell'
-                else:
-                    if ticker in self.current_position.keys():
-                        if self.current_position[ticker] <= 0:
-                            direction = 'Buy'
-
-
                 current_price = (current_market_data.loc[current_market_data['ticker'] == ticker]['askPrice1'].values[0] +current_market_data.loc[current_market_data['ticker'] == ticker]['bidPrice1'].values[0]) / 2
-                tradeOrder = SingleStockOrder('testTicker', datetime.datetime.now().strftime('%Y-%m-%d'), datetime.datetime.now(), datetime.datetime.now(), 'New', direction, current_price, 100, 'MO')
+                quantity = 100
+                #check if there is enough cash to buy
+                if (current_cash < current_price*quantity) and (direction == 'Buy'):
+                    print('Not enough cash to buy')
+                    return None
+
+                tradeOrder = SingleStockOrder('testTicker', datetime.datetime.now().strftime('%Y-%m-%d'), datetime.datetime.now(), datetime.datetime.now(), 'New', direction, current_price,quantity , 'MO')
                 date, ticker, submissionTime, orderID, currStatus, currStatusTime, direction, price, size, type = tradeOrder.outputAsArray()
                 self.submitted_order = pd.concat([self.submitted_order, pd.DataFrame({'date':date, 'submissionTime':submissionTime, 'ticker':ticker, 'orderID':orderID, 'currStatus':currStatus, 'currStatusTime':currStatusTime, 'direction':direction, 'price':price, 'size':size, 'type':type}, index=[0])])
                 self.submitted_order.to_csv('./submitted_order.csv', index=False)

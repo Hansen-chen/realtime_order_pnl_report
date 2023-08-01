@@ -22,6 +22,14 @@ import plotly.graph_objs as go
 import multiprocessing
 import numpy as np
 import lightgbm as lgb
+<<<<<<< Updated upstream
+=======
+
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text, ForeignKey, Float
+from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.ext.automap import automap_base
+
+>>>>>>> Stashed changes
 
 
 class QuantStrategy(Strategy):
@@ -30,6 +38,7 @@ class QuantStrategy(Strategy):
         super(QuantStrategy, self).__init__(stratID, stratName, stratAuthor) #call constructor of parent
         self.ticker = ticker #public field
         self.day = day #public field
+<<<<<<< Updated upstream
         #networth is a dataframe with columns: date, timestamp, networth
         self.networth = pd.DataFrame(columns=['date','timestamp','networth'])
         #cash is a dataframe with columns: date, timestamp, cash
@@ -56,6 +65,61 @@ class QuantStrategy(Strategy):
         self.metrics.to_csv('./metrics.csv', index=False)
         # load model 
         self.all_market_data = {}
+=======
+        self.initial_cash = 10000.0
+        # Create the declarative base
+        self.Base = declarative_base()
+
+        class Networth(self.Base):
+            __tablename__ = 'networth'
+            date = Column(String())
+            timestamp = Column(DateTime(), primary_key=True)
+            networth = Column(Float())
+
+        class Current_position(self.Base):
+            __tablename__ = 'current_position'
+            price = Column(Float())
+            inception_timestamp = Column(DateTime())
+            ticker = Column(String(), primary_key=True)
+            quantity = Column(Float())
+
+        class Submitted_order(self.Base):
+            __tablename__ = 'submitted_order'
+            date = Column(String())
+            submissionTime = Column(DateTime())
+            ticker = Column(String())
+            orderID = Column(String(), primary_key=True)
+            currStatus = Column(String())
+            currStatusTime = Column(DateTime())
+            direction = Column(String())
+            price = Column(Float())
+            size = Column(Integer())
+            type = Column(String())
+
+        class Metrics(self.Base):
+            __tablename__ = 'portfolio_metrics'
+            metricsID = Column(Integer(), primary_key=True)
+            cumulative_return = Column(Float())
+            portfolio_volatility = Column(Float())
+            max_drawdown = Column(Float())
+
+
+
+        self.networth = pd.DataFrame(columns=['date','timestamp','networth'])
+
+        self.current_position = pd.DataFrame(columns=['ticker', 'quantity', 'price','dollar_amount'])
+
+
+        self.submitted_order = pd.DataFrame(
+            columns=['date', 'submissionTime', 'ticker', 'orderID', 'currStatus', 'currStatusTime', 'direction',
+                     'price', 'size', 'type'])
+
+
+        self.metrics = pd.DataFrame(columns=['cumulative_return', 'portfolio_volatility', 'max_drawdown'])
+        # Load model 
+        self.all_market_data = {}
+        self.last_position_time = {}
+>>>>>>> Stashed changes
         self.future2stock = {'JBF': 3443, 'QWF': 2388, 'HCF': 2498, 'DBF': 2610, 'EHF': 1319, 
                              'IPF': 3035, 'IIF': 3006, 'QXF': 2615, 'PEF': 5425, 'NAF': 3105}
         self.stock2future = {v: k for k, v in self.future2stock.items()}
@@ -65,6 +129,26 @@ class QuantStrategy(Strategy):
         self.models = {}
         for future_ticker in self.future2stock.keys():
             self.models[future_ticker] = lgb.Booster(model_file='./modelParamsProd/model_{}_Y_M_1.txt'.format(future_ticker))
+<<<<<<< Updated upstream
+=======
+            
+        # Create an engine and session
+        self.engine = create_engine('sqlite:///database.db')  # Database Abstraction and Portability
+        Session = sessionmaker(bind=self.engine)
+        session = Session()
+        session.begin()
+
+        # Create the table in the database
+        self.Base.metadata.create_all(self.engine)  # Database Schema Management
+
+        # Commit the session to persist the changes to the database
+        session.commit()  # Query Building and Execution
+
+
+        # Close the session
+        session.close()  # Query Building and Execution
+
+>>>>>>> Stashed changes
         # initiate dash plotly app
         # Set up the app
         app = dash.Dash(__name__)
@@ -339,8 +423,14 @@ class QuantStrategy(Strategy):
             print(execution.outputAsArray())
             return None
         elif ((marketData is not None) and (isinstance(marketData, OrderBookSnapshot_FiveLevels))) and (execution is None):
+<<<<<<< Updated upstream
             #TODO: save market data to a local csv file, path is hardcoded "./"
             current_market_data = marketData.outputAsDataFrame()      
+=======
+
+            current_market_data = marketData.outputAsDataFrame()
+
+>>>>>>> Stashed changes
             #check if askPrice1 or bidPrice1 is empty, if it is, print error and then return None
             if current_market_data.iloc[0]['askPrice1'] == 0 or current_market_data.iloc[0]['bidPrice1'] == 0:
                 print('Error: askPrice1 or bidPrice1 is empty')
@@ -358,6 +448,7 @@ class QuantStrategy(Strategy):
             if self.cash.empty:
                 self.cash = pd.DataFrame({'date':current_date, 'timestamp':current_time, 'cash': self.initial_cash_value}, index=[0])
 
+<<<<<<< Updated upstream
             if self.current_position_dataframe.empty:
                 self.current_position_dataframe = pd.DataFrame({'ticker':'cash','quantity':10000.0,'price':1}, index=[0])
 
@@ -395,6 +486,30 @@ class QuantStrategy(Strategy):
                 self.networth = pd.concat([self.networth, pd.DataFrame({'date': current_date, 'timestamp': current_time,'networth': current_networth}, index=[0])])
             else:
                 self.networth.loc[self.networth['timestamp'] == current_time, 'networth'] = current_networth
+=======
+            #update networth and current_position if there is an open position related to this ticker
+            ticker = current_market_data.iloc[0]['ticker']
+            # if it is a futrue ticker with month, transfer it 
+            if ticker not in self.stock2future.keys() and ticker not in self.future2stock.keys():
+                    ticker = ticker[:3]
+                    if ticker not in self.future2stock.keys():
+                        raise Exception('Future ticker problem')
+                
+            related_position = session.query(Current_position).filter_by(ticker=ticker).first()
+            if related_position is not None:
+                #get the current price of the ticker
+                current_price = (current_market_data.iloc[0]['askPrice1'] + current_market_data.iloc[0]['bidPrice1']) / 2
+                #update the price of the position
+                related_position.price = current_price
+                session.commit()
+                #update the networth
+                positions = session.query(Current_position).all()
+                current_networth = Networth(date=current_date, timestamp=current_time, networth=0)
+                for position in positions:
+                    current_networth.networth = current_networth.networth + position.price * position.quantity
+                session.add(current_networth)
+                session.commit()
+>>>>>>> Stashed changes
 
             print(self.current_position)
 
@@ -429,6 +544,7 @@ class QuantStrategy(Strategy):
                 self.metrics = pd.DataFrame({'cumulative_return': cumulative_return,'portfolio_volatility': portfolio_volatility, 'max_drawdown': max_drawdown}, index=[0])
 
 
+<<<<<<< Updated upstream
             #save all self dataframe to a local csv file (override), path is hardcoded "./"
             self.networth.to_csv('./networth.csv', index=False)
             self.cash.to_csv('./cash.csv', index=False)
@@ -489,6 +605,72 @@ class QuantStrategy(Strategy):
             date, ticker, submissionTime, orderID, currStatus, currStatusTime, direction, price, size, type = tradeOrder.outputAsArray()
             self.submitted_order = pd.concat([self.submitted_order, pd.DataFrame({'date':date, 'submissionTime':submissionTime, 'ticker':ticker, 'orderID':orderID, 'currStatus':currStatus, 'currStatusTime':currStatusTime, 'direction':direction, 'price':price, 'size':size, 'type':type}, index=[0])])
             self.submitted_order.to_csv('./submitted_order.csv', index=False)
+=======
+            tradeOrder = None
+            current_cash_query = session.query(Current_position).filter_by(ticker="cash").first()
+
+            current_cash = 0
+
+            if current_cash_query is not None:
+                current_cash = current_cash_query.quantity
+
+            # Save market data to self.all_market_data
+            if ticker not in self.all_market_data.keys():
+                self.all_market_data[ticker] = current_market_data
+            self.all_market_data[ticker] = pd.concat([self.all_market_data[ticker], current_market_data], ignore_index=True)
+            # Check future/stock
+            # Check if future ticker consists of month
+            if ticker in self.future_tickers.keys():
+                return None
+            # Check if we have enough data to make decision
+            if self.if_enough_data == False:
+                stk_time_delta = (self.all_market_data[ticker]['time'].iloc[-1] - self.all_market_data[ticker]['time'].iloc[0]).total_seconds()
+                future_time_delta = (self.all_market_data[self.stock2future[ticker]]['time'].iloc[-1] - self.all_market_data[self.stock2future[ticker]]['time'].iloc[0]).total_seconds()
+                if stk_time_delta < 110 or future_time_delta < 110:
+                    return None
+            self.if_enough_data = True
+            # Check if stock in current position
+            current_position = session.query(Current_position).filter_by(ticker=ticker).first()
+            if current_position is not None and current_position.quantity != 0:
+                # if holding time < 10s, we will return None
+                last_position_time = current_position.inception_timestamp
+                if (current_time - last_position_time).total_seconds() < 10:
+                    # Keep this position
+                    return None
+                else:
+                    # Balance the position
+                    direction = 'buy' if current_position.quantity < 0 else 'sell'
+                    quantity = abs(self.current_position[ticker])
+                    tradeOrder = SingleStockOrder(ticker, datetime.datetime.now().strftime('%Y-%m-%d'), datetime.datetime.now(), 
+                                                  datetime.datetime.now(), 'New', direction, current_price,quantity , 'MO')
+                    return tradeOrder
+            # if we don't have this ticker's position, we will make a new order decision
+            # get the latest 100 seconds market data and downsample by 10s and get the last data in each 10s
+            delay_100s = current_time - datetime.timedelta(seconds=100)
+            input_stock_data = self.all_market_data[ticker].loc[self.all_market_data[ticker]['time'] > delay_100s].resample('10s', on='time').last().reset_index()
+            input_future_data = self.all_market_data[self.stock2future[ticker]].loc[self.all_market_data[self.stock2future[ticker]]['time'] > delay_100s].resample('10s', on='time').last().reset_index()
+            # get feature
+            features_df = self.generate_features(input_stock_data, input_future_data)
+            # get prediction
+            prediction = self.models[ticker].predict(features_df).iloc[-1]
+            # make decision
+            if prediction > 0:
+                direction = 'buy'
+            elif prediction < 0:
+                direction = 'sell'
+            else:
+                return None
+            quantity = self.initial_cash * 0.1 // current_price
+            tradeOrder = SingleStockOrder(ticker, datetime.datetime.now().strftime('%Y-%m-%d'), datetime.datetime.now(),
+                                            datetime.datetime.now(), 'New', direction, current_price, quantity, 'MO')
+            date, ticker, submissionTime, orderID, currStatus, currStatusTime, direction, price, size, type = tradeOrder.outputAsArray()
+            new_order = Submitted_order(date=date, submissionTime=submissionTime, ticker=ticker, orderID=orderID, currStatus=currStatus, currStatusTime=currStatusTime, direction=direction, price=price, size=size, type=type)
+            session.add(new_order)
+            session.commit()
+            session.close()
+            
+            return tradeOrder
+>>>>>>> Stashed changes
         else:
             return None
         
@@ -498,6 +680,15 @@ class QuantStrategy(Strategy):
         askSizes = [f'askSize{i}' for i in range(1, 6)]
         askPrices = [f'askPrice{i}' for i in range(1, 6)]
 
+<<<<<<< Updated upstream
+=======
+    def cal_slope(self, df):
+        bidSizes = [f'bidSize{i}' for i in range(1, 6)]
+        bidPrices = [f'bidPrice{i}' for i in range(1, 6)]
+        askSizes = [f'askSize{i}' for i in range(1, 6)]
+        askPrices = [f'askPrice{i}' for i in range(1, 6)]
+
+>>>>>>> Stashed changes
         df_bid = df[bidSizes + bidPrices].copy()
         df_ask = df[askSizes + askPrices].copy()
         df_bid.loc[:, bidPrices] = df_bid[bidPrices] / df[bidPrices[0]].values.reshape(-1, 1)
@@ -628,5 +819,10 @@ class QuantStrategy(Strategy):
         df = df.replace([np.inf, -np.inf], np.nan).fillna(0)
         # get the last row
         return df
+<<<<<<< Updated upstream
                     
             
+=======
+
+        
+>>>>>>> Stashed changes

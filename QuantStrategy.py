@@ -22,6 +22,7 @@ import plotly.graph_objs as go
 import multiprocessing
 import numpy as np
 import lightgbm as lgb
+from collections import deque
 
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text, ForeignKey, Float
 from sqlalchemy.orm import sessionmaker, declarative_base
@@ -93,7 +94,9 @@ class QuantStrategy(Strategy):
         self.stock2future = {v: k for k, v in self.future2stock.items()}
         self.future_tickers = self.future2stock.keys()
         self.stock_tickers = list(self.future2stock.values())
-        self.if_enough_data = False
+        self.future_feature = {}
+        self.stock_feature = {}
+        self.if_enough_data = {stock_ticker: False for stock_ticker in self.stock_tickers}
         self.models = {}
         for future_ticker in self.future2stock.keys():
             self.models[future_ticker] = lgb.Booster(model_file='./modelParamsProd/model_{}_Y_M_1.txt'.format(future_ticker))
@@ -490,19 +493,21 @@ class QuantStrategy(Strategy):
 
             # Save market data to self.all_market_data
             if ticker not in self.all_market_data.keys():
-                self.all_market_data[ticker] = current_market_data
-            self.all_market_data[ticker] = pd.concat([self.all_market_data[ticker], current_market_data], ignore_index=True)
+                self.all_market_data[ticker] = deque(maxlen=10000)
+            self.all_market_data[ticker].append(current_market_data)
+            while len(self.all_market_data[ticker]) > 1 and (current_time - self.all_market_data[ticker][0]['time'].iloc[0]).total_seconds() > 100:
+                self.all_market_data[ticker].popleft()
             # Check future/stock
             # Check if future ticker consists of month
             if ticker in self.future_tickers.keys():
                 return None
             # Check if we have enough data to make decision
-            if self.if_enough_data == False:
-                stk_time_delta = (self.all_market_data[ticker]['time'].iloc[-1] - self.all_market_data[ticker]['time'].iloc[0]).total_seconds()
-                future_time_delta = (self.all_market_data[self.stock2future[ticker]]['time'].iloc[-1] - self.all_market_data[self.stock2future[ticker]]['time'].iloc[0]).total_seconds()
+            if self.if_enough_data[ticker] is False:
+                stk_time_delta = (self.all_market_data[ticker][-1]['time'].iloc[-1] - self.all_market_data[ticker][0]['time'].iloc[-1]).total_seconds()
+                future_time_delta = (self.all_market_data[self.stock2future[ticker]][-1]['time'].iloc[-1] - self.all_market_data[self.stock2future[ticker]][0]['time'].iloc[-1]).total_seconds()
                 if stk_time_delta < 110 or future_time_delta < 110:
                     return None
-            self.if_enough_data = True
+            self.if_enough_data[ticker] = True
             # Check if stock in current position
             current_position = session.query(Current_position).filter_by(ticker=ticker).first()
             if current_position is not None and current_position.quantity != 0:
@@ -518,11 +523,9 @@ class QuantStrategy(Strategy):
                     tradeOrder = SingleStockOrder(ticker, datetime.datetime.now().strftime('%Y-%m-%d'), datetime.datetime.now(),
                                                   datetime.datetime.now(), 'New', direction, current_price,quantity , 'MO')
                     return tradeOrder
-            # if we don't have this ticker's position, we will make a new order decision
-            # get the latest 100 seconds market data and downsample by 10s and get the last data in each 10s
-            delay_100s = current_time - datetime.timedelta(seconds=100)
-            input_stock_data = self.all_market_data[ticker].loc[self.all_market_data[ticker]['time'] > delay_100s].resample('10s', on='time').last().reset_index()
-            input_future_data = self.all_market_data[self.stock2future[ticker]].loc[self.all_market_data[self.stock2future[ticker]]['time'] > delay_100s].resample('10s', on='time').last().reset_index()
+            # Concat 100s data in deque and downsampling
+            input_stock_data = pd.concat(list(self.all_market_data[ticker]), axis=0).resample('10s', on='time').last().reset_index()
+            input_future_data = pd.concat(list(self.all_market_data[self.stock2future[ticker]]), axis=0).resample('10s', on='time').last().reset_index()
             # get feature
             features_df = self.generate_features(input_stock_data, input_future_data)
             # get prediction

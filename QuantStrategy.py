@@ -315,6 +315,7 @@ class QuantStrategy(Strategy):
             if direction == 'buy':
                 if current_position is not None:
                     current_position.quantity = current_position.quantity + size
+                    current_position.inception_timestamp=timeStamp
                     session.commit()
                 else:
                     new_position = Current_position(price=price, inception_timestamp=timeStamp, ticker=ticker, quantity=size)
@@ -323,6 +324,7 @@ class QuantStrategy(Strategy):
             elif direction == 'sell':
                 if current_position is not None:
                     current_position.quantity = current_position.quantity - size
+                    current_position.inception_timestamp = timeStamp
                     session.commit()
                 else:
                     new_position = Current_position(price=price, inception_timestamp=timeStamp, ticker=ticker, quantity=-size)
@@ -386,7 +388,9 @@ class QuantStrategy(Strategy):
             return None
         elif ((marketData is not None) and (isinstance(marketData, OrderBookSnapshot_FiveLevels))) and (execution is None):
 
-            #TODO: save market data to sqlite?
+            #TODO: save market data to sqlite
+
+            #TODO; query 10s market data
 
             current_market_data = marketData.outputAsDataFrame()
 

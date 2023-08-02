@@ -19,9 +19,9 @@ class MarketDataService:
         self.produce_market_data(marketData_2_exchSim_q, marketData_2_platform_q)
 
     def produce_market_data(self, marketData_2_exchSim_q, marketData_2_platform_q):
-        for i in range(100):
+        for i in range(500):
             self.produce_quote(marketData_2_exchSim_q, marketData_2_platform_q)
-            time.sleep(1)
+            time.sleep(0.5)
 
     def produce_quote(self, marketData_2_exchSim_q, marketData_2_platform_q):
         #TODO: read from file
@@ -31,8 +31,8 @@ class MarketDataService:
         for i in range(5):
             bidPrice.append(bidPrice1-i*0.01)
             askPrice.append(askPrice1+i*0.01)
-            bidSize.append(100+random.randint(0,100)*100)
-            askSize.append(100+random.randint(0,100)*100)
+            bidSize.append(100000+random.randint(0,100)*100)
+            askSize.append(100000+random.randint(0,100)*100)
         quoteSnapshot = OrderBookSnapshot_FiveLevels('JBF1', datetime.datetime.now().strftime('%Y-%m-%d'), datetime.datetime.now(),bidPrice, askPrice, bidSize, askSize)
         print('[%d]MarketDataService>>>produce_quote' % (os.getpid()))
         print(quoteSnapshot.outputAsDataFrame())
@@ -45,8 +45,8 @@ class MarketDataService:
         for i in range(5):
             bidPrice.append(bidPrice1-i*0.01)
             askPrice.append(askPrice1+i*0.01)
-            bidSize.append(100+random.randint(0,100)*100)
-            askSize.append(100+random.randint(0,100)*100)
+            bidSize.append(100000+random.randint(0,100)*100)
+            askSize.append(100000+random.randint(0,100)*100)
         quoteSnapshot = OrderBookSnapshot_FiveLevels('3443', datetime.datetime.now().strftime('%Y-%m-%d'), datetime.datetime.now(),bidPrice, askPrice, bidSize, askSize)
         print('[%d]MarketDataService>>>produce_quote' % (os.getpid()))
         print(quoteSnapshot.outputAsDataFrame())

@@ -17,7 +17,7 @@ class SingleStockOrder():
         self.direction = direction
         self.price = price
         self.size = size
-        self.type = type #"MLO", "LO", "MO", "TWAP"
+        self.type = type #"MLO", "LO", "MO", "TWAP","Cancel"
 
     def outputAsArray(self):
         output = []

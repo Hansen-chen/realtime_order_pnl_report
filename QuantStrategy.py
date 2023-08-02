@@ -280,7 +280,7 @@ class QuantStrategy(Strategy):
 
         #cancel order if the submissionTime compared to the current time is more than 10 seconds
         session = Session()
-        cancel_orders = session.query(Submitted_order).filter(Submitted_order.submissionTime < (timeStamp - datetime.timedelta(seconds=10)))
+        cancel_orders = session.query(Submitted_order).filter(Submitted_order.submissionTime < (timeStamp - timedelta(seconds=10)))
         session.close()
         if cancel_orders is not None:
             for order in cancel_orders:

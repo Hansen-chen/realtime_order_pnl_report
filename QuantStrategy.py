@@ -113,7 +113,7 @@ class QuantStrategy(Strategy):
 
         # Commit the session to persist the changes to the database
         session.commit()  # Query Building and Execution
-        session.remove()
+        session.close()
 
         # initiate dash plotly app
         # Set up the app
@@ -280,7 +280,7 @@ class QuantStrategy(Strategy):
         #cancel order if the submissionTime compared to the current time is more than 10 seconds
         session = Session()
         cancel_orders = session.query(Submitted_order).filter(Submitted_order.submissionTime < (timeStamp - datetime.timedelta(seconds=10)))
-        session.remove()
+        session.close()
         if cancel_orders is not None:
             for order in cancel_orders:
                 _order = SingleStockOrder(order.ticker, order.date, order.submissionTime, order.currStatusTime, order.currStatus,order.direction , order.price, order.size, 'Cancel')
@@ -432,7 +432,7 @@ class QuantStrategy(Strategy):
                     metrics.portfolio_volatility = portfolio_volatility
                     metrics.max_drawdown = max_drawdown
                 session.commit()
-            session.remove()
+            session.close()
             print(execution.outputAsArray())
             return None
         elif ((marketData is not None) and (isinstance(marketData, OrderBookSnapshot_FiveLevels))) and (execution is None):
@@ -604,7 +604,7 @@ class QuantStrategy(Strategy):
             print(tradeOrder.outputAsArray(), 'debug tradeOrder.outputAsArray()', ticker)
             session.add(new_order)
             session.commit()
-            session.remove()
+            session.close()
 
             return tradeOrder
         else:

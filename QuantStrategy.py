@@ -21,7 +21,9 @@ from dash.dependencies import Input, Output
 import plotly.graph_objs as go
 import multiprocessing
 import numpy as np
-import psycopg2
+import lightgbm as lgb
+from collections import deque
+
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text, ForeignKey, Float
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.ext.automap import automap_base
@@ -34,7 +36,7 @@ class QuantStrategy(Strategy):
         super(QuantStrategy, self).__init__(stratID, stratName, stratAuthor) #call constructor of parent
         self.ticker = ticker #public field
         self.day = day #public field
-
+        self.initial_cash = 10000.0
         # Create the declarative base
         self.Base = declarative_base()
 
@@ -84,8 +86,21 @@ class QuantStrategy(Strategy):
 
 
         self.metrics = pd.DataFrame(columns=['cumulative_return', 'portfolio_volatility', 'max_drawdown'])
-
-
+        # Load model
+        self.all_market_data = {}
+        self.last_position_time = {}
+        self.future2stock = {'JBF': '3443', 'QWF': '2388', 'HCF': '2498', 'DBF': '2610', 'EHF': '1319',
+                             'IPF': '3035', 'IIF': '3006', 'QXF': '2615', 'PEF': '5425', 'NAF': '3105'}
+        self.stock2future = {v: k for k, v in self.future2stock.items()}
+        self.future_tickers = self.future2stock.keys()
+        self.stock_tickers = list(self.future2stock.values())
+        self.future_feature = {}
+        self.stock_feature = {}
+        self.last_position_time = {} # Log the last position time for each ticker
+        self.if_enough_data = {stock_ticker: False for stock_ticker in self.stock_tickers}
+        self.models = {}
+        for future_ticker in self.future_tickers:
+            self.models[self.future2stock[future_ticker]] = lgb.Booster(model_file='./models/{}.txt'.format(future_ticker))
 
         # Create an engine and session
         self.engine = create_engine('sqlite:///database.db')  # Database Abstraction and Portability
@@ -245,6 +260,7 @@ class QuantStrategy(Strategy):
 
 
         # Define the function to run the server
+
         def run_server():
             app.run_server(debug=True)
 
@@ -310,12 +326,15 @@ class QuantStrategy(Strategy):
 
 
             current_position = session.query(Current_position).filter_by(ticker=ticker).first()
-
             # update current position with ticker
             if direction == 'buy':
                 if current_position is not None:
-                    current_position.quantity = current_position.quantity + size
-                    current_position.inception_timestamp=timeStamp
+                    # if we have balanced the position, we will update the inception_timestamp
+                    # or keep the inception_timestamp
+                    new_quantity = current_position.quantity + size
+                    current_position.quantity = new_quantity
+                    if new_quantity == 0:
+                        current_position.inception_timestamp = timeStamp
                     session.commit()
                 else:
                     new_position = Current_position(price=price, inception_timestamp=timeStamp, ticker=ticker, quantity=size)
@@ -323,8 +342,10 @@ class QuantStrategy(Strategy):
                     session.commit()
             elif direction == 'sell':
                 if current_position is not None:
-                    current_position.quantity = current_position.quantity - size
-                    current_position.inception_timestamp = timeStamp
+                    new_quantity = current_position.quantity - size
+                    current_position.quantity = new_quantity
+                    if new_quantity == 0:
+                        current_position.inception_timestamp = timeStamp
                     session.commit()
                 else:
                     new_position = Current_position(price=price, inception_timestamp=timeStamp, ticker=ticker, quantity=-size)
@@ -387,10 +408,7 @@ class QuantStrategy(Strategy):
             print(execution.outputAsArray())
             return None
         elif ((marketData is not None) and (isinstance(marketData, OrderBookSnapshot_FiveLevels))) and (execution is None):
-
-            #TODO: save market data to sqlite
-
-            #TODO; query 10s market data
+            print('[%d] Strategy.handle_marketdata' % (os.getpid()))
 
             current_market_data = marketData.outputAsDataFrame()
 
@@ -422,9 +440,12 @@ class QuantStrategy(Strategy):
 
             #update networth and current_position if there is an open position related to this ticker
             ticker = current_market_data.iloc[0]['ticker']
-
-            #TODO: check ticker?
-
+            # if it is a futrue ticker with month, transfer it
+            if ticker not in self.stock_tickers:
+                ticker = ticker[:3]
+                if ticker not in self.future_tickers:
+                    print(ticker, self.future_tickers)
+                    raise ValueError('Future ticker probelm')
 
             related_position = session.query(Current_position).filter_by(ticker=ticker).first()
             if related_position is not None:
@@ -479,28 +500,210 @@ class QuantStrategy(Strategy):
             if current_cash_query is not None:
                 current_cash = current_cash_query.quantity
 
-            #TODO: decide the tradeOrder
-
-            if random.choice([True, False]):
-                ticker = current_market_data['ticker'].values[0]
-                direction = random.choice(["buy", "sell"])
-
-                current_price = (current_market_data.iloc[0]['askPrice1'] + current_market_data.iloc[0]['bidPrice1']) / 2
-                quantity = 100
-                #check if there is enough cash to buy
-                if (current_cash < current_price*quantity) and (direction == 'buy'):
-                    print('Error: Not enough cash to buy')
+            # Save market data to self.all_market_data
+            if ticker not in self.all_market_data.keys():
+                self.all_market_data[ticker] = deque(maxlen=10000)
+            self.all_market_data[ticker].append(current_market_data)
+            while len(self.all_market_data[ticker]) > 1 and (current_time - self.all_market_data[ticker][0]['time'].iloc[0]).total_seconds() > 110:
+                self.all_market_data[ticker].popleft()
+            # Check future/stock
+            # Check if future ticker consists of month
+            
+            if ticker in self.future_tickers:
+                return None
+            # Check if we have enough data to make decision (At least 110s)
+            if self.if_enough_data[ticker] is False:
+                correspond_future = self.stock2future[ticker]
+                if correspond_future not in self.all_market_data.keys():
                     return None
-
-                tradeOrder = SingleStockOrder(ticker, datetime.datetime.now().strftime('%Y-%m-%d'), datetime.datetime.now(), datetime.datetime.now(), 'New', direction, current_price,quantity , 'MO')
-                date, ticker, submissionTime, orderID, currStatus, currStatusTime, direction, price, size, type = tradeOrder.outputAsArray()
-                new_order = Submitted_order(date=date, submissionTime=submissionTime, ticker=ticker, orderID=orderID, currStatus=currStatus, currStatusTime=currStatusTime, direction=direction, price=price, size=size, type=type)
-                session.add(new_order)
-                session.commit()
+                stk_time_delta = (self.all_market_data[ticker][-1]['time'].iloc[-1] - self.all_market_data[ticker][0]['time'].iloc[-1]).total_seconds()
+                future_time_delta = (self.all_market_data[correspond_future][-1]['time'].iloc[-1] - self.all_market_data[correspond_future][0]['time'].iloc[-1]).total_seconds()
+                if stk_time_delta < 110 or future_time_delta < 110:
+                    return None
+            self.if_enough_data[ticker] = True
+            # Check if stock in current position
+            current_position = session.query(Current_position).filter_by(ticker=ticker).first()
+            if current_position is not None and current_position.quantity != 0:
+                # if holding time < 10s, we will return None
+                last_position_time = current_position.inception_timestamp
+                if (current_time - last_position_time).total_seconds() < 10:
+                    # Keep this position
+                    return None
+                else:
+                    # Balance the position
+                    current_price = (current_market_data.iloc[0]['askPrice1'] + current_market_data.iloc[0]['bidPrice1']) / 2
+                    direction = 'buy' if current_position.quantity < 0 else 'sell'
+                    quantity = abs(current_position.quantity)
+                    tradeOrder = SingleStockOrder(ticker, datetime.datetime.now().strftime('%Y-%m-%d'), datetime.datetime.now(),
+                                                  datetime.datetime.now(), 'New', direction, current_price, quantity , 'MO')
+                    print(tradeOrder.outputAsArray(), 'debug tradeOrder.outputAsArray()', ticker)
+                    return tradeOrder
+            # Concat 100s data in deque and downsampling
+            input_stock_data = pd.concat(list(self.all_market_data[ticker]), axis=0).resample('10s', on='time').last().reset_index()
+            input_future_data = pd.concat(list(self.all_market_data[self.stock2future[ticker]]), axis=0).resample('10s', on='time').last().reset_index()
+            print(len(input_stock_data), len(input_future_data), 'input_future_data')
+            # get feature of 11 samples
+            features_df = self.generate_features(input_stock_data.iloc[-11:], input_future_data.iloc[-11:])
+            # get prediction
+            prediction = self.models[ticker].predict(features_df)[-1]
+            # make decision
+            if prediction > 0:
+                direction = 'buy'
+            elif prediction < 0:
+                direction = 'sell'
+            else:
+                return None
+            print("direction :"+ direction)
+            current_price = (current_market_data.iloc[0]['askPrice1'] + current_market_data.iloc[0]['bidPrice1']) / 2
+            quantity = self.initial_cash * 0.1 // current_price
+            tradeOrder = SingleStockOrder(ticker, datetime.datetime.now().strftime('%Y-%m-%d'), datetime.datetime.now(),
+                                            datetime.datetime.now(), 'New', direction, current_price, quantity, 'MO')
+            date, ticker, submissionTime, orderID, currStatus, currStatusTime, direction, price, size, type = tradeOrder.outputAsArray()
+            new_order = Submitted_order(date=date, submissionTime=submissionTime, ticker=ticker, orderID=orderID, currStatus=currStatus, currStatusTime=currStatusTime, direction=direction, price=price, size=size, type=type)
+            print(tradeOrder.outputAsArray(), 'debug tradeOrder.outputAsArray()', ticker)
+            session.add(new_order)
+            session.commit()
             session.close()
 
             return tradeOrder
         else:
             return None
+
+    def cal_slope(self, df):
+        bidSizes = [f'bidSize{i}' for i in range(1, 6)]
+        bidPrices = [f'bidPrice{i}' for i in range(1, 6)]
+        askSizes = [f'askSize{i}' for i in range(1, 6)]
+        askPrices = [f'askPrice{i}' for i in range(1, 6)]
+
+        df_bid = df[bidSizes + bidPrices].copy()
+        df_ask = df[askSizes + askPrices].copy()
+        df_bid.loc[:, bidPrices] = df_bid[bidPrices] / df[bidPrices[0]].values.reshape(-1, 1)
+        df_ask.loc[:, askPrices] = df_ask[askPrices] / df[askPrices[0]].values.reshape(-1, 1)
+
+        bid_data = df_bid.values
+        ask_data = df_ask.values
+
+        cum_bid_sizes = np.cumsum(bid_data[:, :5], axis=1) / bid_data[:, :5].sum(axis=1, keepdims=True)
+        cum_ask_sizes = np.cumsum(ask_data[:, :5], axis=1) / ask_data[:, :5].sum(axis=1, keepdims=True)
+
+        bid_price = bid_data[:, 5:]
+        ask_price = ask_data[:, 5:]
+
+        X_bid = cum_bid_sizes - cum_bid_sizes.mean(axis=1, keepdims=True)
+        Y_bid = bid_price - bid_price.mean(axis=1, keepdims=True)
+        slope_b = (X_bid * Y_bid).sum(axis=1) / ((X_bid ** 2).sum(axis=1) + 1e-10)
+
+        X_ask = cum_ask_sizes - cum_ask_sizes.mean(axis=1, keepdims=True)
+        Y_ask = ask_price - ask_price.mean(axis=1, keepdims=True)
+        slope_a = (X_ask * Y_ask).sum(axis=1) / ((X_ask ** 2).sum(axis=1) + 1e-10)
+
+        return -slope_b, slope_a
+
+    def generate_features(self, futureData_date, stockData_date):
+        basicCols = ['date', 'time', 'sAskPrice1','sBidPrice1','sMidQ', 'fAskPrice1','fBidPrice1', 'fMidQ', 'spreadRatio']
+        featureCols = []
+
+        for i in range(1, 11):
+            featureCols.extend(['fLaggingRtn_{}'.format(str(i))])
+            featureCols.extend(['spreadRatio_{}'.format(str(i))])
+            featureCols.extend(['volumeImbalanceRatio_{}'.format(str(i))])
+            featureCols.extend(['slope_b_{}'.format(str(i))])
+            featureCols.extend(['slope_a_{}'.format(str(i))])
+            featureCols.extend(['slope_ab_{}'.format(str(i))])
+            featureCols.extend(['sLaggingRtn_{}'.format(str(i))])
+            featureCols.extend(['stockSpreadRatio_{}'.format(str(i))])
+            featureCols.extend(['stockVolumeImbalanceRatio_{}'.format(str(i))])
+            featureCols.extend(['stockSlope_b_{}'.format(str(i))])
+            featureCols.extend(['stockSlope_a_{}'.format(str(i))])
+            featureCols.extend(['stockSlope_ab_{}'.format(str(i))])
+
+            for j in range(1, 6):
+                featureCols.extend(['fAskSize{}_{}'.format(str(j), str(i))])
+                featureCols.extend(['fBidSize{}_{}'.format(str(j), str(i))])
+                featureCols.extend(['sAskSize{}_{}'.format(str(j), str(i))])
+                featureCols.extend(['sBidSize{}_{}'.format(str(j), str(i))])
+
+        df = pd.DataFrame(index=stockData_date.index, columns=basicCols+featureCols)
+        df['date'] = stockData_date['date']
+        df['time'] = stockData_date['time']
+
+        # Normalize the size
+        fAskSizeMax = futureData_date[['askSize1', 'askSize2', 'askSize3', 'askSize4', 'askSize5']].max(axis=1)
+        fBidSizeMax = futureData_date[['bidSize1', 'bidSize2', 'bidSize3', 'bidSize4', 'bidSize5']].max(axis=1)
+        sAskSizeMax = stockData_date[['askSize1', 'askSize2', 'askSize3', 'askSize4', 'askSize5']].max(axis=1)
+        sBidSizeMax = stockData_date[['bidSize1', 'bidSize2', 'bidSize3', 'bidSize4', 'bidSize5']].max(axis=1)
+
+        for i in range(1, 6):
+            df['fAskPrice{}'.format(str(i))] = futureData_date['askPrice{}'.format(str(i))]
+            df['fBidPrice{}'.format(str(i))] = futureData_date['bidPrice{}'.format(str(i))]
+            df['fAskSize{}'.format(str(i))] = futureData_date['askSize{}'.format(str(i))] / fAskSizeMax
+            df['fBidSize{}'.format(str(i))] = futureData_date['bidSize{}'.format(str(i))] / fBidSizeMax
+
+            df['sAskPrice{}'.format(str(i))] = stockData_date['askPrice{}'.format(str(i))]
+            df['sBidPrice{}'.format(str(i))] = stockData_date['bidPrice{}'.format(str(i))]
+            df['sAskSize{}'.format(str(i))] = stockData_date['askSize{}'.format(str(i))] / sAskSizeMax
+            df['sBidSize{}'.format(str(i))] = stockData_date['bidSize{}'.format(str(i))] / sBidSizeMax
+
+        df['fMidQ'] = (df['fAskPrice1'] + df['fBidPrice1']) / 2
+        df['slope_b'], df['slope_a'] = self.cal_slope(futureData_date)
+        df['slope_ab'] = df['slope_a'] - df['slope_b']
+
+        # Order Imbalance Ratio (OIR)
+        ask = np.array([df['fAskPrice{}'.format(str(i))] * df['fAskSize{}'.format(str(i))] * (1 - (i - 1) / 5) for i in range(1, 6)]).sum(axis=0)
+        bid = np.array([df['fBidPrice{}'.format(str(i))] * df['fBidSize{}'.format(str(i))] * (1 - (i - 1) / 5) for i in range(1, 6)]).sum(axis=0)
+        df['spreadRatio'] = (ask - bid) / (ask + bid)
+
+        # Order Flow Imbalance (Only 1 level)
+        delta_size_bid = np.where(df['fBidPrice1'] < df['fBidPrice1'].shift(1), 0, np.where(df['fBidPrice1'] == df['fBidPrice1'].shift(1), df['fBidSize1'] - df['fBidSize1'].shift(1), df['fBidSize1']))
+        delta_size_ask = np.where(df['fAskPrice1'] > df['fAskPrice1'].shift(1), 0, np.where(df['fAskPrice1'] == df['fAskPrice1'].shift(1), df['fAskSize1'] - df['fAskSize1'].shift(1), df['fAskSize1']))
+        df['fOrderImbalance'] = (delta_size_bid - delta_size_ask) / (delta_size_bid + delta_size_ask)
+        # df['fOrderImbalance'] = (df['fOrderImbalance'] - df['fOrderImbalance'].rolling(10).mean()) / df['fOrderImbalance'].rolling(10).std()
+
+        for i in range(1, 11):
+            df['fLaggingRtn_{}'.format(str(i))] = np.log(df['fMidQ']) - np.log(df['fMidQ'].shift(i))
+            df['spreadRatio_{}'.format(str(i))] = df['spreadRatio'].shift(i)
+            df['volumeImbalanceRatio_{}'.format(str(i))] = df['fOrderImbalance'].shift(i)
+            df['slope_b_{}'.format(str(i))] = df['slope_b'].shift(i)
+            df['slope_a_{}'.format(str(i))] = df['slope_a'].shift(i)
+            df['slope_ab_{}'.format(str(i))] = df['slope_ab'].shift(i)
+
+            for j in range(1, 6):
+                df['fAskSize{}_{}'.format(str(j), str(i))] = df['fAskSize{}'.format(str(j))].shift(i)
+                df['fBidSize{}_{}'.format(str(j), str(i))] = df['fBidSize{}'.format(str(j))].shift(i)
+                df['sAskSize{}_{}'.format(str(j), str(i))] = df['sAskSize{}'.format(str(j))].shift(i)
+                df['sBidSize{}_{}'.format(str(j), str(i))] = df['sBidSize{}'.format(str(j))].shift(i)
+
+        # Add stock data
+        df['sMidQ'] = (stockData_date['askPrice1'] + stockData_date['bidPrice1']) / 2
+        df['sAskPrice1'] = stockData_date['askPrice1']
+        df['sBidPrice1'] = stockData_date['bidPrice1']
+        df['stockSlope_b'], df['stockSlope_a'] = self.cal_slope(stockData_date)
+        df['stockSlope_ab'] = df['stockSlope_a'] - df['stockSlope_b']
+
+        ask = np.array([df['sAskPrice{}'.format(str(i))] * df['sAskSize{}'.format(str(i))] * (1 - (i - 1) / 5) for i in range(1, 6)]).sum(axis=0)
+        bid = np.array([df['sBidPrice{}'.format(str(i))] * df['sBidSize{}'.format(str(i))] * (1 - (i - 1) / 5) for i in range(1, 6)]).sum(axis=0)
+        df['stockSpreadRatio'] = (ask - bid) / (ask + bid)
+
+        delta_size_bid = np.where(df['sBidPrice1'] < df['sBidPrice1'].shift(1), 0, np.where(df['sBidPrice1'] == df['sBidPrice1'].shift(1), df['sBidSize1'] - df['sBidSize1'].shift(1), df['sBidSize1']))
+        delta_size_ask = np.where(df['sAskPrice1'] > df['sAskPrice1'].shift(1), 0, np.where(df['sAskPrice1'] == df['sAskPrice1'].shift(1), df['sAskSize1'] - df['sAskSize1'].shift(1), df['sAskSize1']))
+        df['stockOrderImbalance'] = (delta_size_bid - delta_size_ask) / (delta_size_bid + delta_size_ask)
+        # df['stockOrderImbalance'] = (df['stockOrderImbalance'] - df['stockOrderImbalance'].rolling(10).mean()) / df['stockOrderImbalance'].rolling(10).std()
+
+        for i in range(1, 11):
+            df['sLaggingRtn_{}'.format(str(i))] = np.log(df['sMidQ']) - np.log(df['sMidQ'].shift(i))
+            df['stockSpreadRatio_{}'.format(str(i))] = df['stockSpreadRatio'].shift(i)
+            df['stockVolumeImbalanceRatio_{}'.format(str(i))] = df['stockOrderImbalance'].shift(i)
+            df['stockSlope_b_{}'.format(str(i))] = df['stockSlope_b'].shift(i)
+            df['stockSlope_a_{}'.format(str(i))] = df['stockSlope_a'].shift(i)
+            df['stockSlope_ab_{}'.format(str(i))] = df['stockSlope_ab'].shift(i)
+
+            for j in range(1, 6):
+                df['sAskSize{}_{}'.format(str(j), str(i))] = df['sAskSize{}'.format(str(j))].shift(i)
+                df['sBidSize{}_{}'.format(str(j), str(i))] = df['sBidSize{}'.format(str(j))].shift(i)
+        # Convert inf to nan to 0
+        df = df[featureCols].iloc[[-1]]
+        df = df.replace([np.inf, -np.inf], np.nan).fillna(0)
+        # get the last row
+        return df
 
         

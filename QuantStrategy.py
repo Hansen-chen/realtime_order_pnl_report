@@ -8,6 +8,7 @@ Created on Thu Jun 20 10:26:05 2020
 
 import os
 import time, datetime
+from datetime import timedelta
 from common.OrderBookSnapshot_FiveLevels import OrderBookSnapshot_FiveLevels
 from common.Strategy import Strategy
 from common.SingleStockOrder import SingleStockOrder
@@ -269,7 +270,7 @@ class QuantStrategy(Strategy):
 
         #cancel order if the submissionTime compared to the current time is more than 5 seconds
         session = Session()
-        cancel_orders = session.query(Submitted_order).filter(Submitted_order.submissionTime < (timeStamp - datetime.timedelta(seconds=5)))
+        cancel_orders = session.query(Submitted_order).filter(Submitted_order.submissionTime < (timeStamp - timedelta(seconds=5)))
         session.close()
         if cancel_orders is not None:
             for order in cancel_orders:
@@ -396,13 +397,13 @@ class QuantStrategy(Strategy):
                 cumulative_return = (networthes.iloc[-1]['networth'] / networthes.iloc[0]['networth'] - 1) * 100
 
                 # filter the networthes df with timestamp within 1 minute before the current timestamp (networthes.iloc[-1]['timestamp'])
-                one_minutes_networthes = networthes[networthes['timestamp'] >= networthes.iloc[-1]['timestamp'] - 60]
+                one_minutes_networthes = networthes[networthes['timestamp'] >= networthes.iloc[-1]['timestamp'] - timedelta(minutes=1)]
                 one_min_return = (one_minutes_networthes.iloc[-1]['networth'] / one_minutes_networthes.iloc[0][
                     'networth'] - 1) * 100
 
                 # filter the networthes df with timestamp within 10 minute before the current timestamp (networthes.iloc[-1]['timestamp'])
-                ten_minutes_networthes = networthes[networthes['timestamp'] >= networthes.iloc[-1]['timestamp'] - 600]
-                ten_min_return = (one_minutes_networthes.iloc[-1]['networth'] / one_minutes_networthes.iloc[0][
+                ten_minutes_networthes = networthes[networthes['timestamp'] >= networthes.iloc[-1]['timestamp'] - timedelta(minutes=10)]
+                ten_min_return = (ten_minutes_networthes.iloc[-1]['networth'] / ten_minutes_networthes.iloc[0][
                     'networth'] - 1) * 100
 
                 # calculate portfolio volatility
@@ -491,12 +492,12 @@ class QuantStrategy(Strategy):
                 cumulative_return = (networthes.iloc[-1]['networth'] / networthes.iloc[0]['networth'] - 1) * 100
 
                 #filter the networthes df with timestamp within 1 minute before the current timestamp (networthes.iloc[-1]['timestamp'])
-                one_minutes_networthes = networthes[networthes['timestamp'] >= networthes.iloc[-1]['timestamp'] - 60]
+                one_minutes_networthes = networthes[networthes['timestamp'] >= networthes.iloc[-1]['timestamp'] - timedelta(minutes=1)]
                 one_min_return = (one_minutes_networthes.iloc[-1]['networth'] / one_minutes_networthes.iloc[0]['networth'] - 1) * 100
 
                 # filter the networthes df with timestamp within 10 minute before the current timestamp (networthes.iloc[-1]['timestamp'])
-                ten_minutes_networthes = networthes[networthes['timestamp'] >= networthes.iloc[-1]['timestamp'] - 600]
-                ten_min_return = (one_minutes_networthes.iloc[-1]['networth'] / one_minutes_networthes.iloc[0]['networth'] - 1) * 100
+                ten_minutes_networthes = networthes[networthes['timestamp'] >= networthes.iloc[-1]['timestamp'] - timedelta(minutes=10)]
+                ten_min_return = (ten_minutes_networthes.iloc[-1]['networth'] / ten_minutes_networthes.iloc[0]['networth'] - 1) * 100
 
 
                 # calculate portfolio volatility

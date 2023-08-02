@@ -4,7 +4,7 @@ Created on Thu Jun 20 10:12:21 2020
 
 @author: hongsong chou
 """
-
+from datetime import datetime as dt
 import time
 import random
 import os
@@ -36,7 +36,7 @@ class MarketDataService:
             self.future_data[future_ticker] = pd.concat([self.future_data[future_ticker], tmp])
 
 
-            tmp = pd.read_csv(self.future_path + stock_ticker + self.suffix, compression='gzip')
+            tmp = pd.read_csv(self.stock_path + str(stock_ticker) + self.suffix, compression='gzip')
             tmp = tmp[tmp['SP1'] > 0]
             tmp = tmp[tmp['BP1'] > 0]
             tmp = tmp[tmp['SP1'] > tmp['BP1']]
@@ -58,12 +58,12 @@ class MarketDataService:
 
             bidPrice, askPrice, bidSize, askSize = [], [], [], []
             tmp = self.future_data[future_ticker].iloc[self.counter]
-            bidPrice.append(tmp[['bidPrice1','bidPrice2','bidPrice3','bidPrice4','bidPrice5']].values.tolist())
-            askPrice.append(tmp[['askPrice1','askPrice2','askPrice3','askPrice4','askPrice5']].values.tolist())
-            bidSize.append(tmp[['bidSize1','bidSize2','bidSize3','bidSize4','bidSize5']].values.tolist())
-            askSize.append(tmp[['askSize1','askSize2','askSize3','askSize4','askSize5']].values.tolist())
+            bidPrice.extend(tmp[['bidPrice1','bidPrice2','bidPrice3','bidPrice4','bidPrice5']].values.tolist())
+            askPrice.extend(tmp[['askPrice1','askPrice2','askPrice3','askPrice4','askPrice5']].values.tolist())
+            bidSize.extend(tmp[['bidSize1','bidSize2','bidSize3','bidSize4','bidSize5']].values.tolist())
+            askSize.extend(tmp[['askSize1','askSize2','askSize3','askSize4','askSize5']].values.tolist())
             quoteSnapshot = OrderBookSnapshot_FiveLevels(future_ticker,tmp['date'] ,
-                                                         tmp['time'], bidPrice, askPrice, bidSize, askSize)
+                                                          dt.fromtimestamp(tmp['time']), bidPrice, askPrice, bidSize, askSize)
             print('[%d]MarketDataService>>>produce_quote' % (os.getpid()))
             print(quoteSnapshot.outputAsDataFrame())
             marketData_2_exchSim_q.put(quoteSnapshot)
@@ -71,19 +71,16 @@ class MarketDataService:
 
             bidPrice, askPrice, bidSize, askSize = [], [], [], []
             tmp = self.stock_data[stock_ticker].iloc[self.counter]
-            bidPrice.append(tmp[['BP1','BP2','BP3','BP4','BP5']].values.tolist())
-            askPrice.append(tmp[['SP1','SP2','SP3','SP4','SP5']].values.tolist())
-            bidSize.append(tmp[['BV1','BV2','BV3','BV4','BV5']].values.tolist())
-            askSize.append(tmp[['SV1','SV2','SV3','SV4','SV5']].values.tolist())
-            quoteSnapshot = OrderBookSnapshot_FiveLevels(stock_ticker,tmp['date'] ,
-                                                         tmp['time'], bidPrice, askPrice, bidSize, askSize)
+            bidPrice.extend(tmp[['BP1','BP2','BP3','BP4','BP5']].values.tolist())
+            askPrice.extend(tmp[['SP1','SP2','SP3','SP4','SP5']].values.tolist())
+            bidSize.extend(tmp[['BV1','BV2','BV3','BV4','BV5']].values.tolist())
+            askSize.extend(tmp[['SV1','SV2','SV3','SV4','SV5']].values.tolist())
+            quoteSnapshot = OrderBookSnapshot_FiveLevels(str(stock_ticker),tmp['date'] ,
+                                                         dt.fromtimestamp(tmp['time']), bidPrice, askPrice, bidSize, askSize)
             print('[%d]MarketDataService>>>produce_quote' % (os.getpid()))
             print(quoteSnapshot.outputAsDataFrame())
             marketData_2_exchSim_q.put(quoteSnapshot)
             marketData_2_platform_q.put(quoteSnapshot)
 
-
+            time.sleep(1)
             self.counter += 1
-
-
-

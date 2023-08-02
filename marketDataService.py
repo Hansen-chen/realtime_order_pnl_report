@@ -36,7 +36,7 @@ class MarketDataService:
             self.future_data[future_ticker] = pd.concat([self.future_data[future_ticker], tmp])
 
 
-            tmp = pd.read_csv(self.future_path + future_ticker + self.suffix, compression='gzip')
+            tmp = pd.read_csv(self.future_path + stock_ticker + self.suffix, compression='gzip')
             tmp = tmp[tmp['SP1'] > 0]
             tmp = tmp[tmp['BP1'] > 0]
             tmp = tmp[tmp['SP1'] > tmp['BP1']]

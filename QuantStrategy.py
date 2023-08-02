@@ -449,12 +449,12 @@ class QuantStrategy(Strategy):
             current_time = current_market_data.iloc[0]['time']
             session = Session()
 
-            networthes = session.query(Networth).filter_by(networth=10000.0).first()
+            networthes = session.query(Networth).filter_by(networth=self.initial_cash).first()
             if networthes is None:
-                networth = Networth(date=current_date, timestamp=current_time, networth=10000.0)
+                networth = Networth(date=current_date, timestamp=current_time, networth=self.initial_cash)
                 session.add(networth)
                 session.commit()
-                position = Current_position(price=1, inception_timestamp=current_time, ticker='cash', quantity=10000.0)
+                position = Current_position(price=1, inception_timestamp=current_time, ticker='cash', quantity=self.initial_cash)
                 session.add(position)
                 session.commit()
                 metrics = Metrics(cumulative_return=0, portfolio_volatility=0, max_drawdown=0, one_min_return=0, ten_min_return=0)

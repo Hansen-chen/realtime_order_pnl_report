@@ -29,7 +29,7 @@ class MarketDataService:
             self.future_data[future_ticker] = pd.DataFrame()
             self.stock_data[stock_ticker] = pd.DataFrame()
 
-            tmp = pd.read_csv(self.future_path + future_ticker + self.suffix , compression='gzip')
+            tmp = pd.read_csv(self.future_path + future_ticker + "1"+self.suffix , compression='gzip')
             tmp = tmp[tmp['askPrice1'] > 0]
             tmp = tmp[tmp['bidPrice1'] > 0]
             tmp = tmp[tmp['askPrice1'] > tmp['bidPrice1']]

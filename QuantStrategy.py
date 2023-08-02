@@ -283,7 +283,7 @@ class QuantStrategy(Strategy):
         session.close()
         if cancel_orders is not None:
             for order in cancel_orders:
-                _order = SingleStockOrder(order.ticker, order.date, order.submissionTime, order.currStatusTime, order.currStatus,order.direction , order.price, order.size, 'Cancel')
+                _order = SingleStockOrder(order.ticker, order.date, order.submissionTime, order.currStatusTime, order.currStatus,order.direction , order.price, order.size, 'cancel')
                 _order.orderID = order.orderID
                 orders_to_cancel.append(_order)
 
@@ -324,7 +324,7 @@ class QuantStrategy(Strategy):
                 print('Error: orderID not in submitted_order')
                 return None
             else:
-                if direction == 'canceled':
+                if direction == 'cancel':
                     submitted_order.currStatus = 'Cancelled'
                     session.commit()
                     return None
@@ -431,6 +431,8 @@ class QuantStrategy(Strategy):
                     metrics.cumulative_return = cumulative_return
                     metrics.portfolio_volatility = portfolio_volatility
                     metrics.max_drawdown = max_drawdown
+                    metrics.one_min_return = one_min_return
+                    metrics.ten_min_return = ten_min_return
                 session.commit()
             session.close()
             print(execution.outputAsArray())
@@ -525,6 +527,8 @@ class QuantStrategy(Strategy):
                     metrics.cumulative_return = cumulative_return
                     metrics.portfolio_volatility = portfolio_volatility
                     metrics.max_drawdown = max_drawdown
+                    metrics.one_min_return = one_min_return
+                    metrics.ten_min_return = ten_min_return
                 session.commit()
 
 

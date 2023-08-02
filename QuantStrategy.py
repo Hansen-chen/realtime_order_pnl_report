@@ -23,7 +23,7 @@ import multiprocessing
 import numpy as np
 import psycopg2
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text, ForeignKey, Float
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.orm import sessionmaker, declarative_base, scoped_session
 from sqlalchemy.ext.automap import automap_base
 
 
@@ -34,6 +34,7 @@ class QuantStrategy(Strategy):
         super(QuantStrategy, self).__init__(stratID, stratName, stratAuthor) #call constructor of parent
         self.ticker = ticker #public field
         self.day = day #public field
+        self.initial_cash = 10000.0
 
         # Create the declarative base
         self.Base = declarative_base()
@@ -68,6 +69,8 @@ class QuantStrategy(Strategy):
             __tablename__ = 'portfolio_metrics'
             metricsID = Column(Integer(), primary_key=True)
             cumulative_return = Column(Float())
+            one_min_return = Column(Float())
+            ten_min_return = Column(Float())
             portfolio_volatility = Column(Float())
             max_drawdown = Column(Float())
 
@@ -83,15 +86,15 @@ class QuantStrategy(Strategy):
                      'price', 'size', 'type'])
 
 
-        self.metrics = pd.DataFrame(columns=['cumulative_return', 'portfolio_volatility', 'max_drawdown'])
+        self.metrics = pd.DataFrame(columns=['cumulative_return', 'one_min_return', 'ten_min_return', 'portfolio_volatility', 'max_drawdown'])
 
 
 
         # Create an engine and session
         self.engine = create_engine('sqlite:///database.db')  # Database Abstraction and Portability
-        Session = sessionmaker(bind=self.engine)
+        self.session_factory = sessionmaker(bind=self.engine)
+        Session = scoped_session(self.session_factory)
         session = Session()
-        session.begin()
 
         # Create the table in the database
         self.Base.metadata.create_all(self.engine)  # Database Schema Management
@@ -254,6 +257,28 @@ class QuantStrategy(Strategy):
     def getStratDay(self):
         return self.day
 
+    def cancel_not_filled_orders(self):
+        time.sleep(5)
+        Base = automap_base()
+        Base.prepare(autoload_with=self.engine)
+
+        Submitted_order = Base.classes.submitted_order
+        timeStamp = datetime.datetime.now()
+        Session = scoped_session(self.session_factory)
+        orders_to_cancel = []
+
+        #cancel order if the submissionTime compared to the current time is more than 10 seconds
+        session = Session()
+        cancel_orders = session.query(Submitted_order).filter(Submitted_order.submissionTime < (timeStamp - datetime.timedelta(seconds=10)))
+        session.close()
+        if cancel_orders is not None:
+            for order in cancel_orders:
+                _order = SingleStockOrder(order.ticker, order.date, order.submissionTime, order.currStatusTime, order.currStatus,order.direction , order.price, order.size, 'cancel')
+                _order.orderID = order.orderID
+                orders_to_cancel.append(_order)
+
+        return orders_to_cancel
+
 
     def run(self, marketData, execution):
         Base = automap_base()
@@ -263,6 +288,7 @@ class QuantStrategy(Strategy):
         Current_position = Base.classes.current_position
         Metrics = Base.classes.portfolio_metrics
         Networth = Base.classes.networth
+        Session = scoped_session(self.session_factory)
 
         #TODO: double check logic below? and add real time print screen?
 
@@ -281,7 +307,6 @@ class QuantStrategy(Strategy):
 
             Session = sessionmaker(bind=self.engine)
             session = Session()
-            session.begin()
 
             # locate the row in self.submitted_order with orderID, then update the currStatus and currStatusTime, check if the size of executed order is the same as the size of submitted order, if less than, the status is PartiallyFilled, if equal, the status is Filled, if more than, return Non and print error
 
@@ -292,6 +317,10 @@ class QuantStrategy(Strategy):
                 print('Error: orderID not in submitted_order')
                 return None
             else:
+                if direction == 'cancel':
+                    submitted_order.currStatus = 'Cancelled'
+                    session.commit()
+                    return None
                 #locate the row in self.submitted_order with orderID
                 submitted_size = submitted_order.size
                 #check if the size of executed order is the same as the size of submitted order
@@ -314,7 +343,12 @@ class QuantStrategy(Strategy):
             # update current position with ticker
             if direction == 'buy':
                 if current_position is not None:
-                    current_position.quantity = current_position.quantity + size
+                    # if we have balanced the position, we will update the inception_timestamp
+                    # or keep the inception_timestamp
+                    new_quantity = current_position.quantity + size
+                    current_position.quantity = new_quantity
+                    if new_quantity == 0:
+                        current_position.inception_timestamp = timeStamp
                     session.commit()
                 else:
                     new_position = Current_position(price=price, inception_timestamp=timeStamp, ticker=ticker, quantity=size)
@@ -322,7 +356,10 @@ class QuantStrategy(Strategy):
                     session.commit()
             elif direction == 'sell':
                 if current_position is not None:
-                    current_position.quantity = current_position.quantity - size
+                    new_quantity = current_position.quantity - size
+                    current_position.quantity = new_quantity
+                    if new_quantity == 0:
+                        current_position.inception_timestamp = timeStamp
                     session.commit()
                 else:
                     new_position = Current_position(price=price, inception_timestamp=timeStamp, ticker=ticker, quantity=-size)
@@ -358,6 +395,16 @@ class QuantStrategy(Strategy):
             if networthes.shape[0] > 1:
                 cumulative_return = (networthes.iloc[-1]['networth'] / networthes.iloc[0]['networth'] - 1) * 100
 
+                # filter the networthes df with timestamp within 1 minute before the current timestamp (networthes.iloc[-1]['timestamp'])
+                one_minutes_networthes = networthes[networthes['timestamp'] >= networthes.iloc[-1]['timestamp'] - 60]
+                one_min_return = (one_minutes_networthes.iloc[-1]['networth'] / one_minutes_networthes.iloc[0][
+                    'networth'] - 1) * 100
+
+                # filter the networthes df with timestamp within 10 minute before the current timestamp (networthes.iloc[-1]['timestamp'])
+                ten_minutes_networthes = networthes[networthes['timestamp'] >= networthes.iloc[-1]['timestamp'] - 600]
+                ten_min_return = (one_minutes_networthes.iloc[-1]['networth'] / one_minutes_networthes.iloc[0][
+                    'networth'] - 1) * 100
+
                 # calculate portfolio volatility
                 portfolio_volatility = networthes['networth'].pct_change().std() * 100
 
@@ -374,12 +421,14 @@ class QuantStrategy(Strategy):
                 metrics = session.query(Metrics).filter_by(metricsID=1).first()
                 if metrics is None:
                     metrics = Metrics(cumulative_return=cumulative_return, portfolio_volatility=portfolio_volatility,
-                                      max_drawdown=max_drawdown)
+                                      max_drawdown=max_drawdown, one_min_return=one_min_return, ten_min_return=ten_min_return)
                     session.add(metrics)
                 else:
                     metrics.cumulative_return = cumulative_return
                     metrics.portfolio_volatility = portfolio_volatility
                     metrics.max_drawdown = max_drawdown
+                    metrics.one_min_return = one_min_return
+                    metrics.ten_min_return = ten_min_return
                 session.commit()
             session.close()
             print(execution.outputAsArray())
@@ -397,19 +446,17 @@ class QuantStrategy(Strategy):
 
             current_date = current_market_data.iloc[0]['date']
             current_time = current_market_data.iloc[0]['time']
-            Session = sessionmaker(bind=self.engine)
             session = Session()
-            session.begin()
 
-            networthes = session.query(Networth).filter_by(networth=10000.0).first()
+            networthes = session.query(Networth).filter_by(networth=self.initial_cash).first()
             if networthes is None:
-                networth = Networth(date=current_date, timestamp=current_time, networth=10000.0)
+                networth = Networth(date=current_date, timestamp=current_time, networth=self.initial_cash)
                 session.add(networth)
                 session.commit()
-                position = Current_position(price=1, inception_timestamp=current_time, ticker='cash', quantity=10000.0)
+                position = Current_position(price=1, inception_timestamp=current_time, ticker='cash', quantity=self.initial_cash)
                 session.add(position)
                 session.commit()
-                metrics = Metrics(cumulative_return=0, portfolio_volatility=0, max_drawdown=0)
+                metrics = Metrics(cumulative_return=0, portfolio_volatility=0, max_drawdown=0.0, one_min_return=0.0, ten_min_return=0.0)
                 session.add(metrics)
                 session.commit()
                 print("initialize networth, current_position and portfolio_metrics")
@@ -443,6 +490,15 @@ class QuantStrategy(Strategy):
             if networthes.shape[0] > 1:
                 cumulative_return = (networthes.iloc[-1]['networth'] / networthes.iloc[0]['networth'] - 1) * 100
 
+                #filter the networthes df with timestamp within 1 minute before the current timestamp (networthes.iloc[-1]['timestamp'])
+                one_minutes_networthes = networthes[networthes['timestamp'] >= networthes.iloc[-1]['timestamp'] - 60]
+                one_min_return = (one_minutes_networthes.iloc[-1]['networth'] / one_minutes_networthes.iloc[0]['networth'] - 1) * 100
+
+                # filter the networthes df with timestamp within 10 minute before the current timestamp (networthes.iloc[-1]['timestamp'])
+                ten_minutes_networthes = networthes[networthes['timestamp'] >= networthes.iloc[-1]['timestamp'] - 600]
+                ten_min_return = (one_minutes_networthes.iloc[-1]['networth'] / one_minutes_networthes.iloc[0]['networth'] - 1) * 100
+
+
                 # calculate portfolio volatility
                 portfolio_volatility = networthes['networth'].pct_change().std() * 100
 
@@ -458,12 +514,14 @@ class QuantStrategy(Strategy):
 
                 metrics = session.query(Metrics).filter_by(metricsID=1).first()
                 if metrics is None:
-                    metrics = Metrics(cumulative_return=cumulative_return, portfolio_volatility=portfolio_volatility, max_drawdown=max_drawdown)
+                    metrics = Metrics(cumulative_return=cumulative_return, portfolio_volatility=portfolio_volatility, max_drawdown=max_drawdown, one_min_return=one_min_return, ten_min_return=ten_min_return)
                     session.add(metrics)
                 else:
                     metrics.cumulative_return = cumulative_return
                     metrics.portfolio_volatility = portfolio_volatility
                     metrics.max_drawdown = max_drawdown
+                    metrics.one_min_return = one_min_return
+                    metrics.ten_min_return = ten_min_return
                 session.commit()
 
 

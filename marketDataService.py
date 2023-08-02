@@ -19,9 +19,9 @@ class MarketDataService:
         self.produce_market_data(marketData_2_exchSim_q, marketData_2_platform_q)
 
     def produce_market_data(self, marketData_2_exchSim_q, marketData_2_platform_q):
-        for i in range(10):
+        for i in range(200):
             self.produce_quote(marketData_2_exchSim_q, marketData_2_platform_q)
-            time.sleep(5)
+            time.sleep(1)
 
     def produce_quote(self, marketData_2_exchSim_q, marketData_2_platform_q):
         #TODO: read from file

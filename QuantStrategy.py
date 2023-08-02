@@ -89,17 +89,18 @@ class QuantStrategy(Strategy):
         # Load model
         self.all_market_data = {}
         self.last_position_time = {}
-        self.future2stock = {'JBF': 3443, 'QWF': 2388, 'HCF': 2498, 'DBF': 2610, 'EHF': 1319,
-                             'IPF': 3035, 'IIF': 3006, 'QXF': 2615, 'PEF': 5425, 'NAF': 3105}
+        self.future2stock = {'JBF': '3443', 'QWF': '2388', 'HCF': '2498', 'DBF': '2610', 'EHF': '1319',
+                             'IPF': '3035', 'IIF': '3006', 'QXF': '2615', 'PEF': '5425', 'NAF': '3105'}
         self.stock2future = {v: k for k, v in self.future2stock.items()}
         self.future_tickers = self.future2stock.keys()
         self.stock_tickers = list(self.future2stock.values())
         self.future_feature = {}
         self.stock_feature = {}
+        self.last_position_time = {} # Log the last position time for each ticker
         self.if_enough_data = {stock_ticker: False for stock_ticker in self.stock_tickers}
         self.models = {}
-        for future_ticker in self.future2stock.keys():
-            self.models[future_ticker] = lgb.Booster(model_file='./modelParamsProd/model_{}_Y_M_1.txt'.format(future_ticker))
+        for future_ticker in self.future_tickers:
+            self.models[self.future2stock[future_ticker]] = lgb.Booster(model_file='./models/{}.txt'.format(future_ticker))
 
         # Create an engine and session
         self.engine = create_engine('sqlite:///database.db')  # Database Abstraction and Portability
@@ -259,6 +260,7 @@ class QuantStrategy(Strategy):
 
 
         # Define the function to run the server
+
         def run_server():
             app.run_server(debug=True)
 
@@ -324,12 +326,15 @@ class QuantStrategy(Strategy):
 
 
             current_position = session.query(Current_position).filter_by(ticker=ticker).first()
-
             # update current position with ticker
             if direction == 'buy':
                 if current_position is not None:
-                    current_position.quantity = current_position.quantity + size
-                    current_position.inception_timestamp=timeStamp
+                    # if we have balanced the position, we will update the inception_timestamp
+                    # or keep the inception_timestamp
+                    new_quantity = current_position.quantity + size
+                    current_position.quantity = new_quantity
+                    if new_quantity == 0:
+                        current_position.inception_timestamp = timeStamp
                     session.commit()
                 else:
                     new_position = Current_position(price=price, inception_timestamp=timeStamp, ticker=ticker, quantity=size)
@@ -337,8 +342,10 @@ class QuantStrategy(Strategy):
                     session.commit()
             elif direction == 'sell':
                 if current_position is not None:
-                    current_position.quantity = current_position.quantity - size
-                    current_position.inception_timestamp = timeStamp
+                    new_quantity = current_position.quantity - size
+                    current_position.quantity = new_quantity
+                    if new_quantity == 0:
+                        current_position.inception_timestamp = timeStamp
                     session.commit()
                 else:
                     new_position = Current_position(price=price, inception_timestamp=timeStamp, ticker=ticker, quantity=-size)
@@ -433,9 +440,10 @@ class QuantStrategy(Strategy):
             #update networth and current_position if there is an open position related to this ticker
             ticker = current_market_data.iloc[0]['ticker']
             # if it is a futrue ticker with month, transfer it
-            if ticker not in self.stock2future.keys():
+            if ticker not in self.stock_tickers:
                 ticker = ticker[:3]
-                if ticker not in self.stock2future.keys():
+                if ticker not in self.future_tickers:
+                    print(ticker, self.future_tickers)
                     raise ValueError('Future ticker probelm')
 
             related_position = session.query(Current_position).filter_by(ticker=ticker).first()
@@ -495,16 +503,20 @@ class QuantStrategy(Strategy):
             if ticker not in self.all_market_data.keys():
                 self.all_market_data[ticker] = deque(maxlen=10000)
             self.all_market_data[ticker].append(current_market_data)
-            while len(self.all_market_data[ticker]) > 1 and (current_time - self.all_market_data[ticker][0]['time'].iloc[0]).total_seconds() > 100:
+            while len(self.all_market_data[ticker]) > 1 and (current_time - self.all_market_data[ticker][0]['time'].iloc[0]).total_seconds() > 110:
                 self.all_market_data[ticker].popleft()
             # Check future/stock
             # Check if future ticker consists of month
-            if ticker in self.future_tickers.keys():
+            
+            if ticker in self.future_tickers:
                 return None
-            # Check if we have enough data to make decision
+            # Check if we have enough data to make decision (At least 110s)
             if self.if_enough_data[ticker] is False:
+                correspond_future = self.stock2future[ticker]
+                if correspond_future not in self.all_market_data.keys():
+                    return None
                 stk_time_delta = (self.all_market_data[ticker][-1]['time'].iloc[-1] - self.all_market_data[ticker][0]['time'].iloc[-1]).total_seconds()
-                future_time_delta = (self.all_market_data[self.stock2future[ticker]][-1]['time'].iloc[-1] - self.all_market_data[self.stock2future[ticker]][0]['time'].iloc[-1]).total_seconds()
+                future_time_delta = (self.all_market_data[correspond_future][-1]['time'].iloc[-1] - self.all_market_data[correspond_future][0]['time'].iloc[-1]).total_seconds()
                 if stk_time_delta < 110 or future_time_delta < 110:
                     return None
             self.if_enough_data[ticker] = True
@@ -518,18 +530,21 @@ class QuantStrategy(Strategy):
                     return None
                 else:
                     # Balance the position
+                    current_price = (current_market_data.iloc[0]['askPrice1'] + current_market_data.iloc[0]['bidPrice1']) / 2
                     direction = 'buy' if current_position.quantity < 0 else 'sell'
-                    quantity = abs(self.current_position[ticker])
+                    quantity = abs(current_position.quantity)
                     tradeOrder = SingleStockOrder(ticker, datetime.datetime.now().strftime('%Y-%m-%d'), datetime.datetime.now(),
-                                                  datetime.datetime.now(), 'New', direction, current_price,quantity , 'MO')
+                                                  datetime.datetime.now(), 'New', direction, current_price, quantity , 'MO')
+                    print(tradeOrder.outputAsArray(), 'debug tradeOrder.outputAsArray()', ticker)
                     return tradeOrder
             # Concat 100s data in deque and downsampling
             input_stock_data = pd.concat(list(self.all_market_data[ticker]), axis=0).resample('10s', on='time').last().reset_index()
             input_future_data = pd.concat(list(self.all_market_data[self.stock2future[ticker]]), axis=0).resample('10s', on='time').last().reset_index()
-            # get feature
-            features_df = self.generate_features(input_stock_data, input_future_data)
+            print(len(input_stock_data), len(input_future_data), 'input_future_data')
+            # get feature of 11 samples
+            features_df = self.generate_features(input_stock_data.iloc[-11:], input_future_data.iloc[-11:])
             # get prediction
-            prediction = self.models[ticker].predict(features_df).iloc[-1]
+            prediction = self.models[ticker].predict(features_df)[-1]
             # make decision
             if prediction > 0:
                 direction = 'buy'
@@ -537,11 +552,13 @@ class QuantStrategy(Strategy):
                 direction = 'sell'
             else:
                 return None
+            current_price = (current_market_data.iloc[0]['askPrice1'] + current_market_data.iloc[0]['bidPrice1']) / 2
             quantity = self.initial_cash * 0.1 // current_price
             tradeOrder = SingleStockOrder(ticker, datetime.datetime.now().strftime('%Y-%m-%d'), datetime.datetime.now(),
                                             datetime.datetime.now(), 'New', direction, current_price, quantity, 'MO')
             date, ticker, submissionTime, orderID, currStatus, currStatusTime, direction, price, size, type = tradeOrder.outputAsArray()
             new_order = Submitted_order(date=date, submissionTime=submissionTime, ticker=ticker, orderID=orderID, currStatus=currStatus, currStatusTime=currStatusTime, direction=direction, price=price, size=size, type=type)
+            print(tradeOrder.outputAsArray(), 'debug tradeOrder.outputAsArray()', ticker)
             session.add(new_order)
             session.commit()
             session.close()

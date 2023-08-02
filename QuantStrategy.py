@@ -85,7 +85,7 @@ class QuantStrategy(Strategy):
                      'price', 'size', 'type'])
 
 
-        self.metrics = pd.DataFrame(columns=['cumulative_return', 'portfolio_volatility', 'max_drawdown'])
+        self.metrics = pd.DataFrame(columns=['cumulative_return', 'one_min_return', 'ten_min_return', 'portfolio_volatility', 'max_drawdown'])
         # Load model
         self.all_market_data = {}
         self.last_position_time = {}

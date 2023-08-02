@@ -38,7 +38,7 @@ class ExchangeSimulator:
             self.produce_execution(res, exchSim_2_platform_execution_q)
     
     def produce_execution(self, order, exchSim_2_platform_execution_q):
-        time.sleep(random.randint(1, 3))
+        time.sleep(random.randint(1, 10))
         execution = SingleStockExecution(order.ticker, order.date, datetime.datetime.now(), order.orderID, order.size, order.price, order.direction)
         exchSim_2_platform_execution_q.put(execution)
         print('[%d]ExchSim.produce_execution' % (os.getpid()))

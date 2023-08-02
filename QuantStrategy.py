@@ -267,9 +267,9 @@ class QuantStrategy(Strategy):
         Session = scoped_session(self.session_factory)
         orders_to_cancel = []
 
-        #cancel order if the submissionTime compared to the current time is more than 10 seconds
+        #cancel order if the submissionTime compared to the current time is more than 5 seconds
         session = Session()
-        cancel_orders = session.query(Submitted_order).filter(Submitted_order.submissionTime < (timeStamp - datetime.timedelta(seconds=10)))
+        cancel_orders = session.query(Submitted_order).filter(Submitted_order.submissionTime < (timeStamp - datetime.timedelta(seconds=5)))
         session.close()
         if cancel_orders is not None:
             for order in cancel_orders:

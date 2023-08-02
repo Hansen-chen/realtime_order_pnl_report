@@ -259,22 +259,21 @@ class QuantStrategy(Strategy):
         return self.day
 
     def cancel_not_filled_orders(self):
-        time.sleep(5)
         Base = automap_base()
         Base.prepare(autoload_with=self.engine)
 
         Submitted_order = Base.classes.submitted_order
-        timeStamp = datetime.datetime.now()
+        timeStamp = datetime.datetime.now() - timedelta(seconds=5)
         Session = scoped_session(self.session_factory)
         orders_to_cancel = []
 
-        #cancel order if the submissionTime compared to the current time is more than 5 seconds
+        #cancel order if the submissionTime compared to the current time is more than 5 seconds .
         session = Session()
-        cancel_orders = session.query(Submitted_order).filter(Submitted_order.submissionTime < (timeStamp - timedelta(seconds=5)))
+        cancel_orders = session.query(Submitted_order).filter(Submitted_order.submissionTime < timeStamp, Submitted_order.currStatus == 'New').all()
         session.close()
         if cancel_orders is not None:
             for order in cancel_orders:
-                _order = SingleStockOrder(order.ticker, order.date, order.submissionTime, order.currStatusTime, order.currStatus,order.direction , order.price, order.size, 'cancel')
+                _order = SingleStockOrder(order.ticker, order.date, order.submissionTime, order.currStatusTime, order.currStatus,'cancel' , order.price, order.size, order.type)
                 _order.orderID = order.orderID
                 orders_to_cancel.append(_order)
 
@@ -321,6 +320,7 @@ class QuantStrategy(Strategy):
                 if direction == 'cancel':
                     submitted_order.currStatus = 'Cancelled'
                     session.commit()
+                    session.close()
                     return None
                 #locate the row in self.submitted_order with orderID
                 submitted_size = submitted_order.size

@@ -457,7 +457,7 @@ class QuantStrategy(Strategy):
                 position = Current_position(price=1, inception_timestamp=current_time, ticker='cash', quantity=10000.0)
                 session.add(position)
                 session.commit()
-                metrics = Metrics(cumulative_return=0, portfolio_volatility=0, max_drawdown=0)
+                metrics = Metrics(cumulative_return=0, portfolio_volatility=0, max_drawdown=0, one_min_return=0, ten_min_return=0)
                 session.add(metrics)
                 session.commit()
                 print("initialize networth, current_position and portfolio_metrics")

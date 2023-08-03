@@ -51,8 +51,11 @@ class TradingPlatform:
             print(execution.outputAsArray())
             self.quantStrat.run(None, execution)
 
-    def handle_order_cancelation(self):
+    def handle_order_cancelation(self,platform_2_exchSim_order_q):
         print('[%d]Platform.handle_order_cancelation' % (os.getpid(),))
         while True:
             time.sleep(2)
-            self.quantStrat.cancel_not_filled_orders()
+            res = self.quantStrat.cancel_not_filled_orders()
+            if len(res)>0:
+                for order in res:
+                    platform_2_exchSim_order_q.put(order)

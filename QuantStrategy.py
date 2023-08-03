@@ -128,7 +128,7 @@ class QuantStrategy(Strategy):
                         dcc.Graph(id='my-graph', animate=False),
                         dcc.Interval(
                             id='interval-component-1',
-                            interval=1000,  # Refresh every 1 second
+                            interval=2000,  # Refresh every 1 second
                             n_intervals=0
                         )
                     ]),
@@ -148,7 +148,7 @@ class QuantStrategy(Strategy):
                                              columns=[{"name": i, "id": i} for i in self.metrics.columns]),
                         dcc.Interval(
                             id='interval-component-3',
-                            interval=1000,  # Refresh every 1 second
+                            interval=2000,  # Refresh every 1 second
                             n_intervals=0
                         )
                     ]),
@@ -158,7 +158,7 @@ class QuantStrategy(Strategy):
                         dcc.Graph(id='position-graph', animate=False),
                         dcc.Interval(
                             id='interval-component-4',
-                            interval=1000,  # Refresh every 1 second
+                            interval=2000,  # Refresh every 1 second
                             n_intervals=0
                         )
                     ])
@@ -170,7 +170,7 @@ class QuantStrategy(Strategy):
                                              columns=[{"name": i, "id": i} for i in self.current_position.columns]),
                         dcc.Interval(
                             id='interval-component-5',
-                            interval=1000,  # Refresh every 1 second
+                            interval=2000,  # Refresh every 1 second
                             n_intervals=0
                         )
                     ]),
@@ -191,7 +191,7 @@ class QuantStrategy(Strategy):
                                              columns=[{"name": i, "id": i} for i in self.submitted_order.columns]),
                         dcc.Interval(
                             id='interval-component-2',
-                            interval=3000,  # Refresh every 1 second
+                            interval=2000,  # Refresh every 1 second
                             n_intervals=0
                         )
                     ])
@@ -539,6 +539,17 @@ class QuantStrategy(Strategy):
             if random.choice([True, False]):
                 ticker = current_market_data['ticker'].values[0]
                 direction = random.choice(["buy", "sell"])
+
+                if related_position is not None:
+                    if related_position.quantity>0:
+                        direction = "sell"
+                    elif related_position.quantity<0:
+                        direction = "buy"
+                    else:
+                        print("no position on " + ticker)
+
+
+                
 
                 current_price = (current_market_data.iloc[0]['askPrice1'] + current_market_data.iloc[0]['bidPrice1']) / 2
                 quantity = self.initial_cash/10//current_price

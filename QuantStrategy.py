@@ -8,6 +8,7 @@ Created on Thu Jun 20 10:26:05 2020
 
 import os
 import time, datetime
+from datetime import timedelta
 from common.OrderBookSnapshot_FiveLevels import OrderBookSnapshot_FiveLevels
 from common.Strategy import Strategy
 from common.SingleStockOrder import SingleStockOrder
@@ -25,7 +26,7 @@ import lightgbm as lgb
 from collections import deque
 
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text, ForeignKey, Float
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.orm import sessionmaker, declarative_base, scoped_session
 from sqlalchemy.ext.automap import automap_base
 
 
@@ -36,7 +37,7 @@ class QuantStrategy(Strategy):
         super(QuantStrategy, self).__init__(stratID, stratName, stratAuthor) #call constructor of parent
         self.ticker = ticker #public field
         self.day = day #public field
-        self.initial_cash = 10000.0
+        self.initial_cash = 10000000.0
         # Create the declarative base
         self.Base = declarative_base()
 
@@ -70,10 +71,10 @@ class QuantStrategy(Strategy):
             __tablename__ = 'portfolio_metrics'
             metricsID = Column(Integer(), primary_key=True)
             cumulative_return = Column(Float())
+            one_min_return = Column(Float())
+            ten_min_return = Column(Float())
             portfolio_volatility = Column(Float())
             max_drawdown = Column(Float())
-
-
 
         self.networth = pd.DataFrame(columns=['date','timestamp','networth'])
 
@@ -85,7 +86,7 @@ class QuantStrategy(Strategy):
                      'price', 'size', 'type'])
 
 
-        self.metrics = pd.DataFrame(columns=['cumulative_return', 'portfolio_volatility', 'max_drawdown'])
+        self.metrics = pd.DataFrame(columns=['cumulative_return', 'one_min_return', 'ten_min_return', 'portfolio_volatility', 'max_drawdown'])
         # Load model
         self.all_market_data = {}
         self.last_position_time = {}
@@ -104,19 +105,16 @@ class QuantStrategy(Strategy):
 
         # Create an engine and session
         self.engine = create_engine('sqlite:///database.db')  # Database Abstraction and Portability
-        Session = sessionmaker(bind=self.engine)
+        self.session_factory = sessionmaker(bind=self.engine)
+        Session = scoped_session(self.session_factory)
         session = Session()
-        session.begin()
 
         # Create the table in the database
         self.Base.metadata.create_all(self.engine)  # Database Schema Management
 
         # Commit the session to persist the changes to the database
         session.commit()  # Query Building and Execution
-
-
-        # Close the session
-        session.close()  # Query Building and Execution
+        session.close()
 
         # initiate dash plotly app
         # Set up the app
@@ -270,6 +268,27 @@ class QuantStrategy(Strategy):
     def getStratDay(self):
         return self.day
 
+    def cancel_not_filled_orders(self):
+        Base = automap_base()
+        Base.prepare(autoload_with=self.engine)
+
+        Submitted_order = Base.classes.submitted_order
+        timeStamp = datetime.datetime.now() - timedelta(seconds=5)
+        Session = scoped_session(self.session_factory)
+        orders_to_cancel = []
+
+        #cancel order if the submissionTime compared to the current time is more than 5 seconds .
+        session = Session()
+        cancel_orders = session.query(Submitted_order).filter(Submitted_order.submissionTime < timeStamp, Submitted_order.currStatus == 'New').all()
+        session.close()
+        if cancel_orders is not None:
+            for order in cancel_orders:
+                _order = SingleStockOrder(order.ticker, order.date, order.submissionTime, order.currStatusTime, order.currStatus,'cancel' , order.price, order.size, order.type)
+                _order.orderID = order.orderID
+                orders_to_cancel.append(_order)
+
+        return orders_to_cancel
+
 
     def run(self, marketData, execution):
         Base = automap_base()
@@ -279,8 +298,9 @@ class QuantStrategy(Strategy):
         Current_position = Base.classes.current_position
         Metrics = Base.classes.portfolio_metrics
         Networth = Base.classes.networth
+        Session = scoped_session(self.session_factory)
 
-        #TODO: double check logic below? and add real time print screen?
+
 
         if (marketData is None) and (execution is None):
             return None
@@ -293,11 +313,7 @@ class QuantStrategy(Strategy):
             #direction to lower case
             direction = direction.lower()
 
-            #TODO: check ticker
-
-            Session = sessionmaker(bind=self.engine)
             session = Session()
-            session.begin()
 
             # locate the row in self.submitted_order with orderID, then update the currStatus and currStatusTime, check if the size of executed order is the same as the size of submitted order, if less than, the status is PartiallyFilled, if equal, the status is Filled, if more than, return Non and print error
 
@@ -308,6 +324,11 @@ class QuantStrategy(Strategy):
                 print('Error: orderID not in submitted_order')
                 return None
             else:
+                if direction == 'cancel':
+                    submitted_order.currStatus = 'Cancelled'
+                    session.commit()
+                    session.close()
+                    return None
                 #locate the row in self.submitted_order with orderID
                 submitted_size = submitted_order.size
                 #check if the size of executed order is the same as the size of submitted order
@@ -381,6 +402,14 @@ class QuantStrategy(Strategy):
             if networthes.shape[0] > 1:
                 cumulative_return = (networthes.iloc[-1]['networth'] / networthes.iloc[0]['networth'] - 1) * 100
 
+                #filter the networthes df with timestamp within 1 minute before the current timestamp (networthes.iloc[-1]['timestamp'])
+                one_minutes_networthes = networthes[networthes['timestamp'] >= networthes.iloc[-1]['timestamp'] - timedelta(minutes=1)]
+                one_min_return = (one_minutes_networthes.iloc[-1]['networth'] / one_minutes_networthes.iloc[0]['networth'] - 1) * 100
+
+                # filter the networthes df with timestamp within 10 minute before the current timestamp (networthes.iloc[-1]['timestamp'])
+                ten_minutes_networthes = networthes[networthes['timestamp'] >= networthes.iloc[-1]['timestamp'] - timedelta(minutes=10)]
+                ten_min_return = (one_minutes_networthes.iloc[-1]['networth'] / one_minutes_networthes.iloc[0]['networth'] - 1) * 100
+
                 # calculate portfolio volatility
                 portfolio_volatility = networthes['networth'].pct_change().std() * 100
 
@@ -397,17 +426,20 @@ class QuantStrategy(Strategy):
                 metrics = session.query(Metrics).filter_by(metricsID=1).first()
                 if metrics is None:
                     metrics = Metrics(cumulative_return=cumulative_return, portfolio_volatility=portfolio_volatility,
-                                      max_drawdown=max_drawdown)
+                                      max_drawdown=max_drawdown, one_min_return=one_min_return, ten_min_return=ten_min_return)
                     session.add(metrics)
                 else:
                     metrics.cumulative_return = cumulative_return
                     metrics.portfolio_volatility = portfolio_volatility
                     metrics.max_drawdown = max_drawdown
+                    metrics.one_min_return = one_min_return
+                    metrics.ten_min_return = ten_min_return
                 session.commit()
             session.close()
             print(execution.outputAsArray())
             return None
         elif ((marketData is not None) and (isinstance(marketData, OrderBookSnapshot_FiveLevels))) and (execution is None):
+            print('[%d] Strategy.handle_marketdata' % (os.getpid()))
 
             current_market_data = marketData.outputAsDataFrame()
 
@@ -418,33 +450,33 @@ class QuantStrategy(Strategy):
 
             current_date = current_market_data.iloc[0]['date']
             current_time = current_market_data.iloc[0]['time']
-            Session = sessionmaker(bind=self.engine)
             session = Session()
-            session.begin()
 
-            networthes = session.query(Networth).filter_by(networth=10000.0).first()
+            networthes = session.query(Networth).filter_by(networth=self.initial_cash).first()
             if networthes is None:
-                networth = Networth(date=current_date, timestamp=current_time, networth=10000.0)
+                networth = Networth(date=current_date, timestamp=current_time, networth=self.initial_cash)
                 session.add(networth)
                 session.commit()
-                position = Current_position(price=1, inception_timestamp=current_time, ticker='cash', quantity=10000.0)
+                position = Current_position(price=1, inception_timestamp=current_time, ticker='cash', quantity=self.initial_cash)
                 session.add(position)
                 session.commit()
-                metrics = Metrics(cumulative_return=0, portfolio_volatility=0, max_drawdown=0)
+                metrics = Metrics(cumulative_return=0, portfolio_volatility=0, max_drawdown=0, one_min_return=0, ten_min_return=0)
                 session.add(metrics)
                 session.commit()
                 print("initialize networth, current_position and portfolio_metrics")
 
             #handle new market data, then create a new order and send it via quantTradingPlatform if needed
 
+
             #update networth and current_position if there is an open position related to this ticker
             ticker = current_market_data.iloc[0]['ticker']
+            print('{} Strategy.handle_marketdata: check ticker:'.format(ticker))
             # if it is a futrue ticker with month, transfer it
             if ticker not in self.stock_tickers:
                 ticker = ticker[:3]
                 if ticker not in self.future_tickers:
                     print(ticker, self.future_tickers)
-                    raise ValueError('Future ticker probelm')
+                    raise ValueError('Future ticker problem')
 
             related_position = session.query(Current_position).filter_by(ticker=ticker).first()
             if related_position is not None:
@@ -467,6 +499,14 @@ class QuantStrategy(Strategy):
             if networthes.shape[0] > 1:
                 cumulative_return = (networthes.iloc[-1]['networth'] / networthes.iloc[0]['networth'] - 1) * 100
 
+                #filter the networthes df with timestamp within 1 minute before the current timestamp (networthes.iloc[-1]['timestamp'])
+                one_minutes_networthes = networthes[networthes['timestamp'] >= networthes.iloc[-1]['timestamp'] - timedelta(minutes=1)]
+                one_min_return = (one_minutes_networthes.iloc[-1]['networth'] / one_minutes_networthes.iloc[0]['networth'] - 1) * 100
+
+                # filter the networthes df with timestamp within 10 minute before the current timestamp (networthes.iloc[-1]['timestamp'])
+                ten_minutes_networthes = networthes[networthes['timestamp'] >= networthes.iloc[-1]['timestamp'] - timedelta(minutes=10)]
+                ten_min_return = (one_minutes_networthes.iloc[-1]['networth'] / one_minutes_networthes.iloc[0]['networth'] - 1) * 100
+
                 # calculate portfolio volatility
                 portfolio_volatility = networthes['networth'].pct_change().std() * 100
 
@@ -482,12 +522,14 @@ class QuantStrategy(Strategy):
 
                 metrics = session.query(Metrics).filter_by(metricsID=1).first()
                 if metrics is None:
-                    metrics = Metrics(cumulative_return=cumulative_return, portfolio_volatility=portfolio_volatility, max_drawdown=max_drawdown)
+                    metrics = Metrics(cumulative_return=cumulative_return, portfolio_volatility=portfolio_volatility, max_drawdown=max_drawdown, one_min_return=one_min_return, ten_min_return=ten_min_return)
                     session.add(metrics)
                 else:
                     metrics.cumulative_return = cumulative_return
                     metrics.portfolio_volatility = portfolio_volatility
                     metrics.max_drawdown = max_drawdown
+                    metrics.one_min_return = one_min_return
+                    metrics.ten_min_return = ten_min_return
                 session.commit()
 
 
@@ -503,21 +545,25 @@ class QuantStrategy(Strategy):
             if ticker not in self.all_market_data.keys():
                 self.all_market_data[ticker] = deque(maxlen=10000)
             self.all_market_data[ticker].append(current_market_data)
-            while len(self.all_market_data[ticker]) > 1 and (current_time - self.all_market_data[ticker][0]['time'].iloc[0]).total_seconds() > 110:
+            while len(self.all_market_data[ticker]) > 1 and (current_time - self.all_market_data[ticker][0]['time'].iloc[0]).total_seconds() > 11:
                 self.all_market_data[ticker].popleft()
             # Check future/stock
             # Check if future ticker consists of month
-            
+            print(ticker, len(self.all_market_data[ticker]))
+
             if ticker in self.future_tickers:
+                print('[%d] Strategy.handle_marketdata: it is future ticker' % (os.getpid()))
                 return None
             # Check if we have enough data to make decision (At least 110s)
             if self.if_enough_data[ticker] is False:
                 correspond_future = self.stock2future[ticker]
                 if correspond_future not in self.all_market_data.keys():
+                    print('[%d] Strategy.handle_marketdata: spond_future not in self.all_market_data.keys()' % (os.getpid()))
                     return None
                 stk_time_delta = (self.all_market_data[ticker][-1]['time'].iloc[-1] - self.all_market_data[ticker][0]['time'].iloc[-1]).total_seconds()
                 future_time_delta = (self.all_market_data[correspond_future][-1]['time'].iloc[-1] - self.all_market_data[correspond_future][0]['time'].iloc[-1]).total_seconds()
-                if stk_time_delta < 110 or future_time_delta < 110:
+                if stk_time_delta < 10 or future_time_delta < 10:
+                    print('[%d] Strategy.handle_marketdata: not enough data' % (os.getpid()))
                     return None
             self.if_enough_data[ticker] = True
             # Check if stock in current position
@@ -527,6 +573,7 @@ class QuantStrategy(Strategy):
                 last_position_time = current_position.inception_timestamp
                 if (current_time - last_position_time).total_seconds() < 10:
                     # Keep this position
+                    print(ticker + ' [%d] Strategy.handle_marketdata: position holding time <10s' % (os.getpid()))
                     return None
                 else:
                     # Balance the position
@@ -538,8 +585,8 @@ class QuantStrategy(Strategy):
                     print(tradeOrder.outputAsArray(), 'debug tradeOrder.outputAsArray()', ticker)
                     return tradeOrder
             # Concat 100s data in deque and downsampling
-            input_stock_data = pd.concat(list(self.all_market_data[ticker]), axis=0).resample('10s', on='time').last().reset_index()
-            input_future_data = pd.concat(list(self.all_market_data[self.stock2future[ticker]]), axis=0).resample('10s', on='time').last().reset_index()
+            input_stock_data = pd.concat(list(self.all_market_data[ticker]), axis=0).resample('1s', on='time').last().reset_index()
+            input_future_data = pd.concat(list(self.all_market_data[self.stock2future[ticker]]), axis=0).resample('1s', on='time').last().reset_index()
             print(len(input_stock_data), len(input_future_data), 'input_future_data')
             # get feature of 11 samples
             features_df = self.generate_features(input_stock_data.iloc[-11:], input_future_data.iloc[-11:])
@@ -551,7 +598,9 @@ class QuantStrategy(Strategy):
             elif prediction < 0:
                 direction = 'sell'
             else:
+                print('[%d] Strategy.handle_marketdata: no signal for this ticker' % (os.getpid()))
                 return None
+            print("direction :"+ direction)
             current_price = (current_market_data.iloc[0]['askPrice1'] + current_market_data.iloc[0]['bidPrice1']) / 2
             quantity = self.initial_cash * 0.1 // current_price
             tradeOrder = SingleStockOrder(ticker, datetime.datetime.now().strftime('%Y-%m-%d'), datetime.datetime.now(),

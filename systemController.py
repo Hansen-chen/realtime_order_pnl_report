@@ -10,7 +10,12 @@ from multiprocessing import Process, Queue
 from marketDataService import MarketDataService
 from exchangeSimulator import ExchangeSimulator
 from quantTradingPlatform import TradingPlatform
-# multiprocessing.set_start_method('spawn', True)
+multiprocessing.set_start_method('fork')
+
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text, ForeignKey, Float
+from sqlalchemy.orm import sessionmaker, declarative_base
+import pandas as pd
+
 
 if __name__ == '__main__':
     ###########################################################################

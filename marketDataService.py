@@ -15,7 +15,7 @@ class MarketDataService:
 
     def __init__(self, marketData_2_exchSim_q, marketData_2_platform_q):
         print("[%d]<<<<< call MarketDataService.init" % (os.getpid(),))
-        time.sleep(3)
+        time.sleep(0.5)
         self.produce_market_data(marketData_2_exchSim_q, marketData_2_platform_q)
 
     def produce_market_data(self, marketData_2_exchSim_q, marketData_2_platform_q):
@@ -33,7 +33,7 @@ class MarketDataService:
             askPrice.append(askPrice1+i*0.01)
             bidSize.append(100+random.randint(0,100)*100)
             askSize.append(100+random.randint(0,100)*100)
-        quoteSnapshot = OrderBookSnapshot_FiveLevels('JBF1', datetime.datetime.now().strftime('%Y-%m-%d'), datetime.datetime.now(),bidPrice, askPrice, bidSize, askSize)
+        quoteSnapshot = OrderBookSnapshot_FiveLevels('JBF', datetime.datetime.now().strftime('%Y-%m-%d'), datetime.datetime.now(),bidPrice, askPrice, bidSize, askSize)
         print('[%d]MarketDataService>>>produce_quote' % (os.getpid()))
         print(quoteSnapshot.outputAsDataFrame())
         marketData_2_exchSim_q.put(quoteSnapshot)

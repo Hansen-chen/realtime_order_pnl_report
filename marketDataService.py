@@ -15,18 +15,20 @@ class MarketDataService:
 
     def __init__(self, marketData_2_exchSim_q, marketData_2_platform_q):
         print("[%d]<<<<< call MarketDataService.init" % (os.getpid(),))
-        time.sleep(3)
-        self.produce_market_data(marketData_2_exchSim_q, marketData_2_platform_q)
+        time.sleep(2)
         self.stock_midquote = {3443: 124905.336,
-                                 2388: 8040.317,
-                                 2498: 6002.225,
-                                 2610: 2375.1636,
-                                 1319: 5017.527,
-                                 3035: 18295.475,
-                                 3006: 8452.317,
-                                 2615: 6256.2876,
-                                 5425: 9768.326,
-                                 3105: 16809.557}
+                               2388: 8040.317,
+                               2498: 6002.225,
+                               2610: 2375.1636,
+                               1319: 5017.527,
+                               3035: 18295.475,
+                               3006: 8452.317,
+                               2615: 6256.2876,
+                               5425: 9768.326,
+                               3105: 16809.557}
+
+        self.produce_market_data(marketData_2_exchSim_q, marketData_2_platform_q)
+
 
     def produce_market_data(self, marketData_2_exchSim_q, marketData_2_platform_q):
         for i in range(200):
@@ -34,7 +36,7 @@ class MarketDataService:
             time.sleep(1)
 
     def produce_quote(self, marketData_2_exchSim_q, marketData_2_platform_q):
-        for stock_ticker, midquote in self.stock_midquote:
+        for stock_ticker, midquote in self.stock_midquote.items():
             bidPrice, askPrice, bidSize, askSize = [], [], [], []
             bidPrice1 = midquote + random.randint(0, 100) / 10
             askPrice1 = bidPrice1 + 0.01

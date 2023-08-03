@@ -35,7 +35,7 @@ class QuantStrategy(Strategy):
         super(QuantStrategy, self).__init__(stratID, stratName, stratAuthor) #call constructor of parent
         self.ticker = ticker #public field
         self.day = day #public field
-        self.initial_cash = 10000.0
+        self.initial_cash = 10000000
 
         # Create the declarative base
         self.Base = declarative_base()
@@ -128,7 +128,7 @@ class QuantStrategy(Strategy):
                         dcc.Graph(id='my-graph', animate=False),
                         dcc.Interval(
                             id='interval-component-1',
-                            interval=5000,  # Refresh every 1 second
+                            interval=3000,  # Refresh every 1 second
                             n_intervals=0
                         )
                     ]),
@@ -148,7 +148,7 @@ class QuantStrategy(Strategy):
                                              columns=[{"name": i, "id": i} for i in self.metrics.columns]),
                         dcc.Interval(
                             id='interval-component-3',
-                            interval=5000,  # Refresh every 1 second
+                            interval=3000,  # Refresh every 1 second
                             n_intervals=0
                         )
                     ]),
@@ -158,19 +158,19 @@ class QuantStrategy(Strategy):
                         dcc.Graph(id='position-graph', animate=False),
                         dcc.Interval(
                             id='interval-component-4',
-                            interval=5000,  # Refresh every 1 second
+                            interval=3000,  # Refresh every 1 second
                             n_intervals=0
                         )
                     ])
                 ]),
                 dbc.Row([
                     dbc.Col([
-                        dash_table.DataTable(data=self.current_position.to_dict('records'), page_size=10,
+                        dash_table.DataTable(data=self.current_position.to_dict('records'), page_size=11,
                                              id='position-table',
                                              columns=[{"name": i, "id": i} for i in self.current_position.columns]),
                         dcc.Interval(
                             id='interval-component-5',
-                            interval=5000,  # Refresh every 1 second
+                            interval=3000,  # Refresh every 1 second
                             n_intervals=0
                         )
                     ]),
@@ -191,7 +191,7 @@ class QuantStrategy(Strategy):
                                              columns=[{"name": i, "id": i} for i in self.submitted_order.columns]),
                         dcc.Interval(
                             id='interval-component-2',
-                            interval=5000,  # Refresh every 1 second
+                            interval=3000,  # Refresh every 1 second
                             n_intervals=0
                         )
                     ])
@@ -541,7 +541,7 @@ class QuantStrategy(Strategy):
                 direction = random.choice(["buy", "sell"])
 
                 current_price = (current_market_data.iloc[0]['askPrice1'] + current_market_data.iloc[0]['bidPrice1']) / 2
-                quantity = 100
+                quantity = self.initial_cash/10//current_price
                 #check if there is enough cash to buy
                 if (current_cash < current_price*quantity) and (direction == 'buy'):
                     print('Error: Not enough cash to buy')

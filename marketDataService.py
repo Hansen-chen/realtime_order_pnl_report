@@ -31,7 +31,7 @@ class MarketDataService:
 
 
     def produce_market_data(self, marketData_2_exchSim_q, marketData_2_platform_q):
-        for i in range(200):
+        while True:
             self.produce_quote(marketData_2_exchSim_q, marketData_2_platform_q)
             time.sleep(1)
 
@@ -43,8 +43,8 @@ class MarketDataService:
             for i in range(5):
                 bidPrice.append(bidPrice1 - i * 0.01)
                 askPrice.append(askPrice1 + i * 0.01)
-                bidSize.append(midquote + random.randint(0, 100) * 100)
-                askSize.append(midquote + random.randint(0, 100) * 100)
+                bidSize.append(bidPrice1 + random.randint(0, 100) * 100)
+                askSize.append(askPrice1 + random.randint(0, 100) * 100)
             quoteSnapshot = OrderBookSnapshot_FiveLevels(str(stock_ticker), datetime.datetime.now().strftime('%Y-%m-%d'),
                                                          datetime.datetime.now(), bidPrice, askPrice, bidSize, askSize)
             print('[%d]MarketDataService>>>produce_quote' % (os.getpid()))

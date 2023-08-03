@@ -25,8 +25,8 @@ class TradingPlatform:
         t_exec = threading.Thread(name='platform.on_exec', target=self.handle_execution, args=(exchSim_2_platform_execution_q, ))
         t_exec.start()
 
-        #t_cancel = threading.Thread(name='platform.on_cancel', target=self.handle_order_cancelation)
-        #t_cancel.start()
+        t_cancel = threading.Thread(name='platform.on_cancel', target=self.handle_order_cancelation, args=(platform_2_exchSim_order_q,))
+        t_cancel.start()
 
     def consume_marketData(self, platform_2_exchSim_order_q, marketData_2_platform_q):
         print('[%d]Platform.consume_marketData' % (os.getpid(),))

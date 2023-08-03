@@ -128,7 +128,7 @@ class QuantStrategy(Strategy):
                         dcc.Graph(id='my-graph', animate=False),
                         dcc.Interval(
                             id='interval-component-1',
-                            interval=3000,  # Refresh every 1 second
+                            interval=1000,  # Refresh every 1 second
                             n_intervals=0
                         )
                     ]),
@@ -148,7 +148,7 @@ class QuantStrategy(Strategy):
                                              columns=[{"name": i, "id": i} for i in self.metrics.columns]),
                         dcc.Interval(
                             id='interval-component-3',
-                            interval=3000,  # Refresh every 1 second
+                            interval=1000,  # Refresh every 1 second
                             n_intervals=0
                         )
                     ]),
@@ -158,7 +158,7 @@ class QuantStrategy(Strategy):
                         dcc.Graph(id='position-graph', animate=False),
                         dcc.Interval(
                             id='interval-component-4',
-                            interval=3000,  # Refresh every 1 second
+                            interval=1000,  # Refresh every 1 second
                             n_intervals=0
                         )
                     ])
@@ -170,7 +170,7 @@ class QuantStrategy(Strategy):
                                              columns=[{"name": i, "id": i} for i in self.current_position.columns]),
                         dcc.Interval(
                             id='interval-component-5',
-                            interval=3000,  # Refresh every 1 second
+                            interval=1000,  # Refresh every 1 second
                             n_intervals=0
                         )
                     ]),
@@ -269,7 +269,7 @@ class QuantStrategy(Strategy):
 
         #cancel order if the submissionTime compared to the current time is more than 5 seconds .
         session = Session()
-        cancel_orders = session.query(Submitted_order).filter(Submitted_order.submissionTime < timeStamp, Submitted_order.currStatus == 'New').all()
+        cancel_orders = session.query(Submitted_order).filter(Submitted_order.submissionTime < timeStamp, Submitted_order.currStatus == 'New',Submitted_order.type == 'LO').all()
         session.close()
         if cancel_orders is not None:
             for order in cancel_orders:

@@ -24,6 +24,9 @@ class TradingPlatform:
         t_exec = threading.Thread(name='platform.on_exec', target=self.handle_execution, args=(exchSim_2_platform_execution_q, ))
         t_exec.start()
 
+        t_cancel = threading.Thread(name='platform.on_cancel', target=self.handle_order_cancelation , args=(platform_2_exchSim_order_q,))
+        t_cancel.start()
+
     def consume_marketData(self, platform_2_exchSim_order_q, marketData_2_platform_q):
         print('[%d]Platform.consume_marketData' % (os.getpid(),))
         while True:
@@ -44,3 +47,11 @@ class TradingPlatform:
             print('[%d] Platform.handle_execution' % (os.getpid()))
             print(execution.outputAsArray())
             self.quantStrat.run(None, execution)
+
+    def handle_order_cancelation(self, platform_2_exchSim_order_q):
+        print('[%d]Platform.handle_order_cancelation' % (os.getpid(),))
+        while True:
+            time.sleep(2)
+            res = self.quantStrat.cancel_not_filled_orders()
+            for order in res:
+                platform_2_exchSim_order_q.put(order)

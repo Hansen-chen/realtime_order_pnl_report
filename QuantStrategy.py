@@ -174,7 +174,7 @@ class QuantStrategy(Strategy):
                 ]),
                 dbc.Row([
                     dbc.Col([
-                        dash_table.DataTable(data=self.current_position.to_dict('records'), page_size=10,
+                        dash_table.DataTable(data=self.current_position.to_dict('records'), page_size=11,
                                              id='position-table',
                                              columns=[{"name": i, "id": i} for i in self.current_position.columns]),
                         dcc.Interval(
@@ -273,13 +273,13 @@ class QuantStrategy(Strategy):
         Base.prepare(autoload_with=self.engine)
 
         Submitted_order = Base.classes.submitted_order
-        timeStamp = datetime.datetime.now() - timedelta(seconds=5)
+        timeStamp = datetime.datetime.now() - timedelta(seconds=10)
         Session = scoped_session(self.session_factory)
         orders_to_cancel = []
 
         #cancel order if the submissionTime compared to the current time is more than 5 seconds .
         session = Session()
-        cancel_orders = session.query(Submitted_order).filter(Submitted_order.submissionTime < timeStamp, Submitted_order.currStatus == 'New').all()
+        cancel_orders = session.query(Submitted_order).filter(Submitted_order.submissionTime < timeStamp, Submitted_order.currStatus == 'New', Submitted_order.type == 'LO').all()
         session.close()
         if cancel_orders is not None:
             for order in cancel_orders:

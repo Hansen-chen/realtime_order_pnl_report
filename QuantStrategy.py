@@ -320,7 +320,7 @@ class QuantStrategy(Strategy):
                     current_price = (position_market_data.askPrice1 + position_market_data.bidPrice1) / 2
                     direction = 'buy' if position.quantity < 0 else 'sell'
                     quantity = abs(position.quantity)
-                    print(position.ticker + "holds for more than 10 seconds at " + str(position_market_data.time)+ ", need to balance")
+                    print(position.ticker + " holds for more than 10 seconds at " + str(position_market_data.time)+ ", need to balance")
                     tradeOrder = SingleStockOrder(position.ticker, position_market_data.date, position_market_data.time,position_market_data.time,
                                                   'New', direction, current_price, quantity,'MO')
                     balanceOrders.append(tradeOrder)
@@ -382,12 +382,18 @@ class QuantStrategy(Strategy):
             submitted_order = session.query(Submitted_order).filter_by(orderID=orderID).first()
 
             # check if the orderID is in self.submitted_order
-            if submitted_order is None:
-                print('Error: orderID not in submitted_order')
+            if submitted_order is None and price != 0 and size != 0:
+
+                new_order = Submitted_order(date=date, submissionTime=timeStamp, ticker=ticker, orderID=orderID,
+                                            currStatus="Filled", currStatusTime=timeStamp, direction=direction,
+                                            price=price, size=size, type="MO")
+
+                session.add(new_order)
+                session.commit()
                 return None
             else:
-                if direction == 'cancel':
-                    submitted_order.currStatus = 'Cancelled'
+                if price == 0 and size == 0:
+                    submitted_order.currStatus = 'Not Filled'
                     session.commit()
                     session.close()
                     return None

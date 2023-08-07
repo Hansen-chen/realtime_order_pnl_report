@@ -16,7 +16,7 @@ from common.SingleStockExecution import SingleStockExecution
 import pandas as pd
 import random
 import dash
-from dash import dcc, dash_table,html
+from dash import dcc, dash_table, html
 import dash_bootstrap_components as dbc
 from dash.dependencies import Input, Output
 import plotly.graph_objs as go
@@ -30,21 +30,21 @@ from sqlalchemy.orm import sessionmaker, declarative_base, scoped_session
 from sqlalchemy.ext.automap import automap_base
 
 
-
 class QuantStrategy(Strategy):
 
     def __init__(self, stratID, stratName, stratAuthor, ticker, day):
-        super(QuantStrategy, self).__init__(stratID, stratName, stratAuthor) #call constructor of parent
-        self.ticker = ticker #public field
-        self.day = day #public field
+        super(QuantStrategy, self).__init__(stratID, stratName, stratAuthor)  # call constructor of parent
+        self.ticker = ticker  # public field
+        self.day = day  # public field
         self.initial_cash = 10000000.0
         # Create the declarative base
         self.Base = declarative_base()
 
         class Networth(self.Base):
             __tablename__ = 'networth'
+            networthID = Column(Integer(), primary_key=True)
             date = Column(String())
-            timestamp = Column(DateTime(), primary_key=True)
+            timestamp = Column(DateTime())
             networth = Column(Float())
 
         class Current_position(self.Base):
@@ -103,17 +103,16 @@ class QuantStrategy(Strategy):
             bidSize4 = Column(Integer())
             bidSize5 = Column(Integer())
 
-        self.networth = pd.DataFrame(columns=['date','timestamp','networth'])
+        self.networth = pd.DataFrame(columns=['date', 'timestamp', 'networth'])
 
-        self.current_position = pd.DataFrame(columns=['ticker', 'quantity', 'price','dollar_amount'])
-
+        self.current_position = pd.DataFrame(columns=['ticker', 'quantity', 'price', 'dollar_amount'])
 
         self.submitted_order = pd.DataFrame(
             columns=['date', 'submissionTime', 'ticker', 'orderID', 'currStatus', 'currStatusTime', 'direction',
                      'price', 'size', 'type'])
 
-
-        self.metrics = pd.DataFrame(columns=['cumulative_return', 'one_min_return', 'ten_min_return', 'portfolio_volatility', 'max_drawdown'])
+        self.metrics = pd.DataFrame(
+            columns=['cumulative_return', 'one_min_return', 'ten_min_return', 'portfolio_volatility', 'max_drawdown'])
         # Load model
         self.last_position_time = {}
         self.future2stock = {'JBF': '3443', 'QWF': '2388', 'HCF': '2498', 'DBF': '2610', 'EHF': '1319',
@@ -123,10 +122,11 @@ class QuantStrategy(Strategy):
         self.stock_tickers = list(self.future2stock.values())
         self.future_feature = {}
         self.stock_feature = {}
-        self.last_position_time = {} # Log the last position time for each ticker
+        self.last_position_time = {}  # Log the last position time for each ticker
         self.models = {}
         for future_ticker in self.future_tickers:
-            self.models[self.future2stock[future_ticker]] = lgb.Booster(model_file='./models/{}.txt'.format(future_ticker))
+            self.models[self.future2stock[future_ticker]] = lgb.Booster(
+                model_file='./models/{}.txt'.format(future_ticker))
 
         # Create an engine and session
         self.engine = create_engine('sqlite:///database.db')  # Database Abstraction and Portability
@@ -162,7 +162,7 @@ class QuantStrategy(Strategy):
                         dcc.Graph(id='my-graph', animate=False),
                         dcc.Interval(
                             id='interval-component-1',
-                            interval=5000,  # Refresh every 1 second
+                            interval=1000,  # Refresh every 1 second
                             n_intervals=0
                         )
                     ]),
@@ -182,7 +182,7 @@ class QuantStrategy(Strategy):
                                              columns=[{"name": i, "id": i} for i in self.metrics.columns]),
                         dcc.Interval(
                             id='interval-component-3',
-                            interval=5000,  # Refresh every 1 second
+                            interval=1000,  # Refresh every 1 second
                             n_intervals=0
                         )
                     ]),
@@ -192,7 +192,7 @@ class QuantStrategy(Strategy):
                         dcc.Graph(id='position-graph', animate=False),
                         dcc.Interval(
                             id='interval-component-4',
-                            interval=5000,  # Refresh every 1 second
+                            interval=1000,  # Refresh every 1 second
                             n_intervals=0
                         )
                     ])
@@ -204,7 +204,7 @@ class QuantStrategy(Strategy):
                                              columns=[{"name": i, "id": i} for i in self.current_position.columns]),
                         dcc.Interval(
                             id='interval-component-5',
-                            interval=5000,  # Refresh every 1 second
+                            interval=1000,  # Refresh every 1 second
                             n_intervals=0
                         )
                     ]),
@@ -225,12 +225,12 @@ class QuantStrategy(Strategy):
                                              columns=[{"name": i, "id": i} for i in self.submitted_order.columns]),
                         dcc.Interval(
                             id='interval-component-2',
-                            interval=5000,  # Refresh every 1 second
+                            interval=1000,  # Refresh every 1 second
                             n_intervals=0
                         )
                     ])
                 ])
-            ],fluid=True)
+            ], fluid=True)
 
         # Define the callback function
         @app.callback(Output('my-graph', 'figure'),
@@ -242,30 +242,32 @@ class QuantStrategy(Strategy):
         def update_app(n):
 
             df = pd.read_sql_table('networth', con=self.engine.connect())
-            #get the latest timestamp and convert it to string
+            # get the latest timestamp and convert it to string
             latest_timestamp = "inception"
-            if len(df) > 1:
-                latest_timestamp = str(df.iloc[-1]['timestamp'])
+
             df['timestamp'] = pd.to_datetime(df['timestamp'])
 
             # sort the dataframe by timestamp, the latest timestamp will be at the end
             df = df.sort_values(by=['timestamp'])
 
+            if len(df) > 1:
+                latest_timestamp = str(df.iloc[-1]['timestamp'])
+
             # Create the graph
             fig_pnl = go.Figure()
             fig_pnl.add_trace(go.Scatter(x=df['timestamp'], y=df['networth'], mode='lines', name='Networth'))
             fig_pnl.update_layout(title='Portfolio Value at ' + latest_timestamp, xaxis_title='Date',
-                              yaxis_title='Networth')
+                                  yaxis_title='Networth')
 
             df_order = pd.read_sql_table('submitted_order', con=self.engine.connect())
             # sort the dataframe by submissionTime in descending order, and then currStatus = 'New' first, other currStatus second
             df_order = df_order.sort_values(by=['submissionTime', 'currStatus'], ascending=[False, True])
-            #take the first 15 rows
+            # take the first 15 rows
             df_order = df_order.head(15)
 
             df_position = pd.read_sql_table('current_position', con=self.engine.connect())
 
-            #add a column to calculate the absolute total value of each position called dollar_amount
+            # add a column to calculate the absolute total value of each position called dollar_amount
             df_position['dollar_amount'] = abs(df_position['quantity'] * df_position['price'])
 
             # Create the graph as a pie chart
@@ -279,8 +281,8 @@ class QuantStrategy(Strategy):
             # drop metricsID column
             df_metrics = df_metrics.drop(columns=['metricsID'])
 
-            return fig_pnl, df_order.to_dict('records'), df_metrics.to_dict('records'), fig_position, df_position.to_dict('records')
-
+            return fig_pnl, df_order.to_dict('records'), df_metrics.to_dict(
+                'records'), fig_position, df_position.to_dict('records')
 
         # Define the function to run the server
 
@@ -302,18 +304,20 @@ class QuantStrategy(Strategy):
         Session = scoped_session(self.session_factory)
         orders_to_cancel = []
 
-        #cancel order if the submissionTime compared to the current time is more than 5 seconds .
+        # cancel order if the submissionTime compared to the current time is more than 5 seconds .
         session = Session()
-        cancel_orders = session.query(Submitted_order).filter(Submitted_order.submissionTime < timeStamp, Submitted_order.currStatus == 'New', Submitted_order.type == 'LO').all()
+        cancel_orders = session.query(Submitted_order).filter(Submitted_order.submissionTime < timeStamp,
+                                                              Submitted_order.currStatus == 'New',
+                                                              Submitted_order.type == 'LO').all()
         session.close()
-        if len(cancel_orders)>0:
+        if len(cancel_orders) > 0:
             for order in cancel_orders:
-                _order = SingleStockOrder(order.ticker, order.date, order.submissionTime, order.currStatusTime, order.currStatus,'cancel' , order.price, order.size, order.type)
+                _order = SingleStockOrder(order.ticker, order.date, order.submissionTime, order.currStatusTime,
+                                          order.currStatus, 'cancel', order.price, order.size, order.type)
                 _order.orderID = order.orderID
                 orders_to_cancel.append(_order)
 
         return orders_to_cancel
-
 
     def run(self, marketData, execution):
         Base = automap_base()
@@ -326,17 +330,15 @@ class QuantStrategy(Strategy):
         Market_data = Base.classes.market_data
         Session = scoped_session(self.session_factory)
 
-
-
         if (marketData is None) and (execution is None):
             return None
         elif (marketData is None) and ((execution is not None) and (isinstance(execution, SingleStockExecution))):
-            #handle executions
+            # handle executions
             print('[%d] Strategy.handle_execution' % (os.getpid()))
             date, ticker, timeStamp, execID, orderID, direction, price, size, comm = execution.outputAsArray()
             execID = str(execID)
             orderID = str(orderID)
-            #direction to lower case
+            # direction to lower case
             direction = direction.lower()
 
             session = Session()
@@ -345,7 +347,7 @@ class QuantStrategy(Strategy):
 
             submitted_order = session.query(Submitted_order).filter_by(orderID=orderID).first()
 
-            #check if the orderID is in self.submitted_order
+            # check if the orderID is in self.submitted_order
             if submitted_order is None:
                 print('Error: orderID not in submitted_order')
                 return None
@@ -355,12 +357,12 @@ class QuantStrategy(Strategy):
                     session.commit()
                     session.close()
                     return None
-                #locate the row in self.submitted_order with orderID
+                # locate the row in self.submitted_order with orderID
                 submitted_size = submitted_order.size
-                #check if the size of executed order is the same as the size of submitted order
+                # check if the size of executed order is the same as the size of submitted order
                 if size < submitted_size:
                     submitted_order.currStatus = 'PartiallyFilled'
-                    #update the size of submitted order
+                    # update the size of submitted order
                     submitted_order.size = submitted_order.size - size
                 elif size > submitted_size:
                     print('Error: size of executed order is more than the size of submitted order')
@@ -370,7 +372,6 @@ class QuantStrategy(Strategy):
                     submitted_order.currStatus = 'Filled'
                 submitted_order.currStatusTime = timeStamp
                 session.commit()  # Query Building and Execution
-
 
             current_position = session.query(Current_position).filter_by(ticker=ticker).first()
             # update current position with ticker
@@ -384,7 +385,8 @@ class QuantStrategy(Strategy):
                         current_position.inception_timestamp = timeStamp
                     session.commit()
                 else:
-                    new_position = Current_position(price=price, inception_timestamp=timeStamp, ticker=ticker, quantity=size)
+                    new_position = Current_position(price=price, inception_timestamp=timeStamp, ticker=ticker,
+                                                    quantity=size)
                     session.add(new_position)
                     session.commit()
             elif direction == 'sell':
@@ -395,7 +397,8 @@ class QuantStrategy(Strategy):
                         current_position.inception_timestamp = timeStamp
                     session.commit()
                 else:
-                    new_position = Current_position(price=price, inception_timestamp=timeStamp, ticker=ticker, quantity=-size)
+                    new_position = Current_position(price=price, inception_timestamp=timeStamp, ticker=ticker,
+                                                    quantity=-size)
                     session.add(new_position)
                     session.commit()
             else:
@@ -423,18 +426,23 @@ class QuantStrategy(Strategy):
             session.commit()
 
             networthes = pd.read_sql_table('networth', con=self.engine.connect())
+            networthes = networthes.sort_values(by=['timestamp'])
 
-            #update self.metrics with self.networth if self.networth has more than 1 row
+            # update self.metrics with self.networth if self.networth has more than 1 row
             if networthes.shape[0] > 1:
                 cumulative_return = (networthes.iloc[-1]['networth'] / networthes.iloc[0]['networth'] - 1) * 100
 
-                #filter the networthes df with timestamp within 1 minute before the current timestamp (networthes.iloc[-1]['timestamp'])
-                one_minutes_networthes = networthes[networthes['timestamp'] >= networthes.iloc[-1]['timestamp'] - timedelta(minutes=1)]
-                one_min_return = (one_minutes_networthes.iloc[-1]['networth'] / one_minutes_networthes.iloc[0]['networth'] - 1) * 100
+                # filter the networthes df with timestamp within 1 minute before the current timestamp (networthes.iloc[-1]['timestamp'])
+                one_minutes_networthes = networthes[
+                    networthes['timestamp'] >= networthes.iloc[-1]['timestamp'] - timedelta(minutes=1)]
+                one_min_return = (one_minutes_networthes.iloc[-1]['networth'] / one_minutes_networthes.iloc[0][
+                    'networth'] - 1) * 100
 
                 # filter the networthes df with timestamp within 10 minute before the current timestamp (networthes.iloc[-1]['timestamp'])
-                ten_minutes_networthes = networthes[networthes['timestamp'] >= networthes.iloc[-1]['timestamp'] - timedelta(minutes=10)]
-                ten_min_return = (one_minutes_networthes.iloc[-1]['networth'] / one_minutes_networthes.iloc[0]['networth'] - 1) * 100
+                ten_minutes_networthes = networthes[
+                    networthes['timestamp'] >= networthes.iloc[-1]['timestamp'] - timedelta(minutes=10)]
+                ten_min_return = (one_minutes_networthes.iloc[-1]['networth'] / one_minutes_networthes.iloc[0][
+                    'networth'] - 1) * 100
 
                 # calculate portfolio volatility
                 portfolio_volatility = networthes['networth'].pct_change().std() * 100
@@ -452,7 +460,8 @@ class QuantStrategy(Strategy):
                 metrics = session.query(Metrics).filter_by(metricsID=1).first()
                 if metrics is None:
                     metrics = Metrics(cumulative_return=cumulative_return, portfolio_volatility=portfolio_volatility,
-                                      max_drawdown=max_drawdown, one_min_return=one_min_return, ten_min_return=ten_min_return)
+                                      max_drawdown=max_drawdown, one_min_return=one_min_return,
+                                      ten_min_return=ten_min_return)
                     session.add(metrics)
                 else:
                     metrics.cumulative_return = cumulative_return
@@ -464,12 +473,13 @@ class QuantStrategy(Strategy):
             session.close()
             print(execution.outputAsArray())
             return None
-        elif ((marketData is not None) and (isinstance(marketData, OrderBookSnapshot_FiveLevels))) and (execution is None):
+        elif ((marketData is not None) and (isinstance(marketData, OrderBookSnapshot_FiveLevels))) and (
+                execution is None):
             print('[%d] Strategy.handle_marketdata' % (os.getpid()))
 
             current_market_data = marketData.outputAsDataFrame()
 
-            #check if askPrice1 or bidPrice1 is empty, if it is, print error and then return None
+            # check if askPrice1 or bidPrice1 is empty, if it is, print error and then return None
             if current_market_data.iloc[0]['askPrice1'] == 0 or current_market_data.iloc[0]['bidPrice1'] == 0:
                 print('Error: askPrice1 or bidPrice1 is empty')
                 return None
@@ -483,19 +493,21 @@ class QuantStrategy(Strategy):
                 networth = Networth(date=current_date, timestamp=current_time, networth=self.initial_cash)
                 session.add(networth)
                 session.commit()
-                position = Current_position(price=1, inception_timestamp=current_time, ticker='cash', quantity=self.initial_cash)
+                position = Current_position(price=1, inception_timestamp=current_time, ticker='cash',
+                                            quantity=self.initial_cash)
                 session.add(position)
                 session.commit()
-                metrics = Metrics(cumulative_return=0, portfolio_volatility=0, max_drawdown=0, one_min_return=0, ten_min_return=0)
+                metrics = Metrics(cumulative_return=0, portfolio_volatility=0, max_drawdown=0, one_min_return=0,
+                                  ten_min_return=0)
                 session.add(metrics)
                 session.commit()
                 print("initialize networth, current_position and portfolio_metrics")
 
-            #handle new market data, then create a new order and send it via quantTradingPlatform if needed
+            # handle new market data, then create a new order and send it via quantTradingPlatform if needed
 
             print('[%d] Strategy.handle_marketdata: check ticker' % (os.getpid()))
 
-            #update networth and current_position if there is an open position related to this ticker
+            # update networth and current_position if there is an open position related to this ticker
             ticker = current_market_data.iloc[0]['ticker']
             # if it is a futrue ticker with month, transfer it
             if ticker not in self.stock_tickers:
@@ -506,12 +518,13 @@ class QuantStrategy(Strategy):
 
             related_position = session.query(Current_position).filter_by(ticker=ticker).first()
             if related_position is not None:
-                #get the current price of the ticker
-                current_price = (current_market_data.iloc[0]['askPrice1'] + current_market_data.iloc[0]['bidPrice1']) / 2
-                #update the price of the position
+                # get the current price of the ticker
+                current_price = (current_market_data.iloc[0]['askPrice1'] + current_market_data.iloc[0][
+                    'bidPrice1']) / 2
+                # update the price of the position
                 related_position.price = current_price
                 session.commit()
-                #update the networth
+                # update the networth
                 positions = session.query(Current_position).all()
                 current_networth = Networth(date=current_date, timestamp=current_time, networth=0)
                 for position in positions:
@@ -520,18 +533,23 @@ class QuantStrategy(Strategy):
                 session.commit()
 
             networthes = pd.read_sql_table('networth', con=self.engine.connect())
+            networthes = networthes.sort_values(by=['timestamp'])
 
-            #update self.metrics with self.networth if self.networth has more than 1 row
+            # update self.metrics with self.networth if self.networth has more than 1 row
             if networthes.shape[0] > 1:
                 cumulative_return = (networthes.iloc[-1]['networth'] / networthes.iloc[0]['networth'] - 1) * 100
 
-                #filter the networthes df with timestamp within 1 minute before the current timestamp (networthes.iloc[-1]['timestamp'])
-                one_minutes_networthes = networthes[networthes['timestamp'] >= networthes.iloc[-1]['timestamp'] - timedelta(minutes=1)]
-                one_min_return = (one_minutes_networthes.iloc[-1]['networth'] / one_minutes_networthes.iloc[0]['networth'] - 1) * 100
+                # filter the networthes df with timestamp within 1 minute before the current timestamp (networthes.iloc[-1]['timestamp'])
+                one_minutes_networthes = networthes[
+                    networthes['timestamp'] >= networthes.iloc[-1]['timestamp'] - timedelta(minutes=1)]
+                one_min_return = (one_minutes_networthes.iloc[-1]['networth'] / one_minutes_networthes.iloc[0][
+                    'networth'] - 1) * 100
 
                 # filter the networthes df with timestamp within 10 minute before the current timestamp (networthes.iloc[-1]['timestamp'])
-                ten_minutes_networthes = networthes[networthes['timestamp'] >= networthes.iloc[-1]['timestamp'] - timedelta(minutes=10)]
-                ten_min_return = (one_minutes_networthes.iloc[-1]['networth'] / one_minutes_networthes.iloc[0]['networth'] - 1) * 100
+                ten_minutes_networthes = networthes[
+                    networthes['timestamp'] >= networthes.iloc[-1]['timestamp'] - timedelta(minutes=10)]
+                ten_min_return = (one_minutes_networthes.iloc[-1]['networth'] / one_minutes_networthes.iloc[0][
+                    'networth'] - 1) * 100
 
                 # calculate portfolio volatility
                 portfolio_volatility = networthes['networth'].pct_change().std() * 100
@@ -548,7 +566,9 @@ class QuantStrategy(Strategy):
 
                 metrics = session.query(Metrics).filter_by(metricsID=1).first()
                 if metrics is None:
-                    metrics = Metrics(cumulative_return=cumulative_return, portfolio_volatility=portfolio_volatility, max_drawdown=max_drawdown, one_min_return=one_min_return, ten_min_return=ten_min_return)
+                    metrics = Metrics(cumulative_return=cumulative_return, portfolio_volatility=portfolio_volatility,
+                                      max_drawdown=max_drawdown, one_min_return=one_min_return,
+                                      ten_min_return=ten_min_return)
                     session.add(metrics)
                 else:
                     metrics.cumulative_return = cumulative_return
@@ -557,7 +577,6 @@ class QuantStrategy(Strategy):
                     metrics.one_min_return = one_min_return
                     metrics.ten_min_return = ten_min_return
                 session.commit()
-
 
             tradeOrder = None
             current_cash_query = session.query(Current_position).filter_by(ticker="cash").first()
@@ -569,29 +588,29 @@ class QuantStrategy(Strategy):
 
             # add market data to database
             new_market_data = Market_data(ticker=ticker,
-                                                date = current_date,
-                                                time = current_time,
-                                                askPrice5 = current_market_data.iloc[0]['askPrice5'],
-                                                askPrice4 = current_market_data.iloc[0]['askPrice4'],
-                                                askPrice3 = current_market_data.iloc[0]['askPrice3'],
-                                                askPrice2 = current_market_data.iloc[0]['askPrice2'],
-                                                askPrice1 = current_market_data.iloc[0]['askPrice1'],
-                                                bidPrice1 = current_market_data.iloc[0]['bidPrice1'],
-                                                bidPrice2 = current_market_data.iloc[0]['bidPrice2'],
-                                                bidPrice3 = current_market_data.iloc[0]['bidPrice3'],
-                                                bidPrice4 = current_market_data.iloc[0]['bidPrice4'],
-                                                bidPrice5 = current_market_data.iloc[0]['bidPrice5'],
-                                                askSize5 = int(current_market_data.iloc[0]['askSize5']),
-                                                askSize4 = int(current_market_data.iloc[0]['askSize4']),
-                                                askSize3 = int(current_market_data.iloc[0]['askSize3']),
-                                                askSize2 = int(current_market_data.iloc[0]['askSize2']),
-                                                askSize1 = int(current_market_data.iloc[0]['askSize1']),
-                                                bidSize1 = int(current_market_data.iloc[0]['bidSize1']),
-                                                bidSize2 = int(current_market_data.iloc[0]['bidSize2']),
-                                                bidSize3 = int(current_market_data.iloc[0]['bidSize3']),
-                                                bidSize4 = int(current_market_data.iloc[0]['bidSize4']),
-                                                bidSize5 = int(current_market_data.iloc[0]['bidSize5'])
-            )
+                                          date=current_date,
+                                          time=current_time,
+                                          askPrice5=current_market_data.iloc[0]['askPrice5'],
+                                          askPrice4=current_market_data.iloc[0]['askPrice4'],
+                                          askPrice3=current_market_data.iloc[0]['askPrice3'],
+                                          askPrice2=current_market_data.iloc[0]['askPrice2'],
+                                          askPrice1=current_market_data.iloc[0]['askPrice1'],
+                                          bidPrice1=current_market_data.iloc[0]['bidPrice1'],
+                                          bidPrice2=current_market_data.iloc[0]['bidPrice2'],
+                                          bidPrice3=current_market_data.iloc[0]['bidPrice3'],
+                                          bidPrice4=current_market_data.iloc[0]['bidPrice4'],
+                                          bidPrice5=current_market_data.iloc[0]['bidPrice5'],
+                                          askSize5=int(current_market_data.iloc[0]['askSize5']),
+                                          askSize4=int(current_market_data.iloc[0]['askSize4']),
+                                          askSize3=int(current_market_data.iloc[0]['askSize3']),
+                                          askSize2=int(current_market_data.iloc[0]['askSize2']),
+                                          askSize1=int(current_market_data.iloc[0]['askSize1']),
+                                          bidSize1=int(current_market_data.iloc[0]['bidSize1']),
+                                          bidSize2=int(current_market_data.iloc[0]['bidSize2']),
+                                          bidSize3=int(current_market_data.iloc[0]['bidSize3']),
+                                          bidSize4=int(current_market_data.iloc[0]['bidSize4']),
+                                          bidSize5=int(current_market_data.iloc[0]['bidSize5'])
+                                          )
             session.add(new_market_data)
             session.commit()
 
@@ -601,22 +620,28 @@ class QuantStrategy(Strategy):
 
             # Check future/stock
             # Check if future ticker consists of month
-            
+
             if ticker in self.future_tickers:
                 print('[%d] Strategy.handle_marketdata: it is future ticker' % (os.getpid()))
                 return None
             # Check if we have enough data to make decision (At least 110s)
             correspond_future = self.stock2future[ticker]
-            futures_data = session.query(Market_data).order_by(Market_data.time.desc()).filter_by(ticker=correspond_future).all()
-            stock_data = session.query(Market_data).order_by(Market_data.time.desc()).filter_by(ticker=ticker).all()
+            futures_data = session.query(Market_data).order_by(Market_data.time.asc()).filter_by(
+                ticker=correspond_future).all()
+            stock_data = session.query(Market_data).order_by(Market_data.time.asc()).filter_by(ticker=ticker).all()
 
             print("==========market data debug at " + str(current_time) + "==========")
 
+            print("==== future =====")
             for future in futures_data:
                 print(future.time)
+            print("==== future =====")
 
+            print("==== stock =====")
             for stock in stock_data:
                 print(stock.time)
+
+            print("==== stock =====")
 
             print("==========market data debug at " + str(current_time) + "==========")
 
@@ -628,9 +653,12 @@ class QuantStrategy(Strategy):
                 return None
             # calculate the time delta between the earliest and latest timestamp of the stock_data
             stk_time_delta = (stock_data[-1].time - stock_data[0].time).total_seconds()
-            #calculate the time delta between the earliest and latest timestamp of the future_data
+            # calculate the time delta between the earliest and latest timestamp of the future_data
             future_time_delta = (futures_data[-1].time - futures_data[0].time).total_seconds()
-            if stk_time_delta < 100 or future_time_delta < 100:
+
+            print("stock time delta: " + str(stk_time_delta))
+            print("future time delta: " + str(future_time_delta))
+            if stk_time_delta < 10 or future_time_delta < 10:
                 print('[%d] Strategy.handle_marketdata: not enough data' % (os.getpid()))
                 return None
             # Check if stock in current position
@@ -644,21 +672,26 @@ class QuantStrategy(Strategy):
                     return None
                 else:
                     # Balance the position
-                    current_price = (current_market_data.iloc[0]['askPrice1'] + current_market_data.iloc[0]['bidPrice1']) / 2
+                    current_price = (current_market_data.iloc[0]['askPrice1'] + current_market_data.iloc[0][
+                        'bidPrice1']) / 2
                     direction = 'buy' if current_position.quantity < 0 else 'sell'
                     quantity = abs(current_position.quantity)
                     tradeOrder = SingleStockOrder(ticker, current_date, current_time,
-                                                  current_time, 'New', direction, current_price, quantity , 'MO')
+                                                  current_time, 'New', direction, current_price, quantity, 'MO')
                     print(tradeOrder.outputAsArray(), 'debug tradeOrder.outputAsArray()', ticker)
                     return tradeOrder
             # Concat 100s data in deque and downsampling
-            outputCols = ['ticker', 'date', 'time', \
-                          'askPrice5', 'askPrice4', 'askPrice3', 'askPrice2', 'askPrice1', \
-                          'bidPrice1', 'bidPrice2', 'bidPrice3', 'bidPrice4', 'bidPrice5', \
-                          'askSize5', 'askSize4', 'askSize3', 'askSize2', 'askSize1', \
-                          'bidSize1', 'bidSize2', 'bidSize3', 'bidSize4', 'bidSize5']
-            input_stock_data = pd.DataFrame.from_records(stock_data, index='time', columns=outputCols).resample('10s', on='time').last().reset_index()
-            input_future_data = pd.DataFrame.from_records(futures_data, index='time', columns=outputCols).resample('10s', on='time').last().reset_index()
+            futures_data_query = session.query(Market_data).order_by(Market_data.time.asc()).filter_by(
+                ticker=correspond_future)
+            stock_data_query = session.query(Market_data).order_by(Market_data.time.asc()).filter_by(ticker=ticker)
+
+            input_stock_data_pd = pd.read_sql(sql=stock_data_query.statement, con=self.engine.connect())
+            input_stock_data = input_stock_data_pd.resample('1s', on='time').last().reset_index()
+            input_stock_data.fillna(method='ffill', inplace=True)
+            input_future_data_pd = pd.read_sql(sql=futures_data_query.statement, con=self.engine.connect())
+            input_future_data = input_future_data_pd.resample('1s', on='time').last().reset_index()
+            input_future_data.fillna(method='ffill', inplace=True)
+
             print(len(input_stock_data), len(input_future_data), 'input_future_data')
             # get feature of 11 samples
             features_df = self.generate_features(input_stock_data.iloc[-11:], input_future_data.iloc[-11:])
@@ -672,13 +705,15 @@ class QuantStrategy(Strategy):
             else:
                 print('[%d] Strategy.handle_marketdata: no signal for this ticker' % (os.getpid()))
                 return None
-            print("direction :"+ direction)
+            print("direction :" + direction)
             current_price = (current_market_data.iloc[0]['askPrice1'] + current_market_data.iloc[0]['bidPrice1']) / 2
             quantity = self.initial_cash * 0.1 // current_price
             tradeOrder = SingleStockOrder(ticker, current_date, current_time,
-                                            current_time, 'New', direction, current_price, quantity, 'MO')
+                                          current_time, 'New', direction, current_price, quantity, 'MO')
             date, ticker, submissionTime, orderID, currStatus, currStatusTime, direction, price, size, type = tradeOrder.outputAsArray()
-            new_order = Submitted_order(date=date, submissionTime=submissionTime, ticker=ticker, orderID=orderID, currStatus=currStatus, currStatusTime=currStatusTime, direction=direction, price=price, size=size, type=type)
+            new_order = Submitted_order(date=date, submissionTime=submissionTime, ticker=ticker, orderID=orderID,
+                                        currStatus=currStatus, currStatusTime=currStatusTime, direction=direction,
+                                        price=price, size=size, type=type)
             print(tradeOrder.outputAsArray(), 'debug tradeOrder.outputAsArray()', ticker)
             session.add(new_order)
             session.commit()
@@ -719,7 +754,8 @@ class QuantStrategy(Strategy):
         return -slope_b, slope_a
 
     def generate_features(self, futureData_date, stockData_date):
-        basicCols = ['date', 'time', 'sAskPrice1','sBidPrice1','sMidQ', 'fAskPrice1','fBidPrice1', 'fMidQ', 'spreadRatio']
+        basicCols = ['date', 'time', 'sAskPrice1', 'sBidPrice1', 'sMidQ', 'fAskPrice1', 'fBidPrice1', 'fMidQ',
+                     'spreadRatio']
         featureCols = []
 
         for i in range(1, 11):
@@ -742,7 +778,7 @@ class QuantStrategy(Strategy):
                 featureCols.extend(['sAskSize{}_{}'.format(str(j), str(i))])
                 featureCols.extend(['sBidSize{}_{}'.format(str(j), str(i))])
 
-        df = pd.DataFrame(index=stockData_date.index, columns=basicCols+featureCols)
+        df = pd.DataFrame(index=stockData_date.index, columns=basicCols + featureCols)
         df['date'] = stockData_date['date']
         df['time'] = stockData_date['time']
 
@@ -768,13 +804,19 @@ class QuantStrategy(Strategy):
         df['slope_ab'] = df['slope_a'] - df['slope_b']
 
         # Order Imbalance Ratio (OIR)
-        ask = np.array([df['fAskPrice{}'.format(str(i))] * df['fAskSize{}'.format(str(i))] * (1 - (i - 1) / 5) for i in range(1, 6)]).sum(axis=0)
-        bid = np.array([df['fBidPrice{}'.format(str(i))] * df['fBidSize{}'.format(str(i))] * (1 - (i - 1) / 5) for i in range(1, 6)]).sum(axis=0)
+        ask = np.array([df['fAskPrice{}'.format(str(i))] * df['fAskSize{}'.format(str(i))] * (1 - (i - 1) / 5) for i in
+                        range(1, 6)]).sum(axis=0)
+        bid = np.array([df['fBidPrice{}'.format(str(i))] * df['fBidSize{}'.format(str(i))] * (1 - (i - 1) / 5) for i in
+                        range(1, 6)]).sum(axis=0)
         df['spreadRatio'] = (ask - bid) / (ask + bid)
 
         # Order Flow Imbalance (Only 1 level)
-        delta_size_bid = np.where(df['fBidPrice1'] < df['fBidPrice1'].shift(1), 0, np.where(df['fBidPrice1'] == df['fBidPrice1'].shift(1), df['fBidSize1'] - df['fBidSize1'].shift(1), df['fBidSize1']))
-        delta_size_ask = np.where(df['fAskPrice1'] > df['fAskPrice1'].shift(1), 0, np.where(df['fAskPrice1'] == df['fAskPrice1'].shift(1), df['fAskSize1'] - df['fAskSize1'].shift(1), df['fAskSize1']))
+        delta_size_bid = np.where(df['fBidPrice1'] < df['fBidPrice1'].shift(1), 0,
+                                  np.where(df['fBidPrice1'] == df['fBidPrice1'].shift(1),
+                                           df['fBidSize1'] - df['fBidSize1'].shift(1), df['fBidSize1']))
+        delta_size_ask = np.where(df['fAskPrice1'] > df['fAskPrice1'].shift(1), 0,
+                                  np.where(df['fAskPrice1'] == df['fAskPrice1'].shift(1),
+                                           df['fAskSize1'] - df['fAskSize1'].shift(1), df['fAskSize1']))
         df['fOrderImbalance'] = (delta_size_bid - delta_size_ask) / (delta_size_bid + delta_size_ask)
         # df['fOrderImbalance'] = (df['fOrderImbalance'] - df['fOrderImbalance'].rolling(10).mean()) / df['fOrderImbalance'].rolling(10).std()
 
@@ -799,12 +841,18 @@ class QuantStrategy(Strategy):
         df['stockSlope_b'], df['stockSlope_a'] = self.cal_slope(stockData_date)
         df['stockSlope_ab'] = df['stockSlope_a'] - df['stockSlope_b']
 
-        ask = np.array([df['sAskPrice{}'.format(str(i))] * df['sAskSize{}'.format(str(i))] * (1 - (i - 1) / 5) for i in range(1, 6)]).sum(axis=0)
-        bid = np.array([df['sBidPrice{}'.format(str(i))] * df['sBidSize{}'.format(str(i))] * (1 - (i - 1) / 5) for i in range(1, 6)]).sum(axis=0)
+        ask = np.array([df['sAskPrice{}'.format(str(i))] * df['sAskSize{}'.format(str(i))] * (1 - (i - 1) / 5) for i in
+                        range(1, 6)]).sum(axis=0)
+        bid = np.array([df['sBidPrice{}'.format(str(i))] * df['sBidSize{}'.format(str(i))] * (1 - (i - 1) / 5) for i in
+                        range(1, 6)]).sum(axis=0)
         df['stockSpreadRatio'] = (ask - bid) / (ask + bid)
 
-        delta_size_bid = np.where(df['sBidPrice1'] < df['sBidPrice1'].shift(1), 0, np.where(df['sBidPrice1'] == df['sBidPrice1'].shift(1), df['sBidSize1'] - df['sBidSize1'].shift(1), df['sBidSize1']))
-        delta_size_ask = np.where(df['sAskPrice1'] > df['sAskPrice1'].shift(1), 0, np.where(df['sAskPrice1'] == df['sAskPrice1'].shift(1), df['sAskSize1'] - df['sAskSize1'].shift(1), df['sAskSize1']))
+        delta_size_bid = np.where(df['sBidPrice1'] < df['sBidPrice1'].shift(1), 0,
+                                  np.where(df['sBidPrice1'] == df['sBidPrice1'].shift(1),
+                                           df['sBidSize1'] - df['sBidSize1'].shift(1), df['sBidSize1']))
+        delta_size_ask = np.where(df['sAskPrice1'] > df['sAskPrice1'].shift(1), 0,
+                                  np.where(df['sAskPrice1'] == df['sAskPrice1'].shift(1),
+                                           df['sAskSize1'] - df['sAskSize1'].shift(1), df['sAskSize1']))
         df['stockOrderImbalance'] = (delta_size_bid - delta_size_ask) / (delta_size_bid + delta_size_ask)
         # df['stockOrderImbalance'] = (df['stockOrderImbalance'] - df['stockOrderImbalance'].rolling(10).mean()) / df['stockOrderImbalance'].rolling(10).std()
 
@@ -825,4 +873,4 @@ class QuantStrategy(Strategy):
         # get the last row
         return df
 
-        
+

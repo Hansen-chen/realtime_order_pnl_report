@@ -115,7 +115,7 @@ class MarketDataService:
         self.produce_market_data(marketData_2_exchSim_q, marketData_2_platform_q)
 
     def produce_market_data(self, marketData_2_exchSim_q, marketData_2_platform_q):
-        for i in range(10000):
+        while True:
             self.produce_quote(marketData_2_exchSim_q, marketData_2_platform_q)
             time.sleep(1)
 
@@ -154,5 +154,5 @@ class MarketDataService:
             marketData_2_exchSim_q.put(quoteSnapshot)
             marketData_2_platform_q.put(quoteSnapshot)
 
-            time.sleep(1)
+            #time.sleep(0.5)
             self.counter += 1

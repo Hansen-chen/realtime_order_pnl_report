@@ -310,7 +310,7 @@ class QuantStrategy(Strategy):
         current_positions = session.query(Current_position).all()
         if len(current_positions) == 0:
             session.close()
-            return None
+            return balanceOrders
         for position in current_positions:
             position_market_data = session.query(Market_data).filter_by(ticker=position.ticker).order_by(Market_data.time.asc()).first()
             if position_market_data is None or position.quantity == 0.0:

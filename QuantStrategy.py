@@ -322,7 +322,7 @@ class QuantStrategy(Strategy):
                     quantity = abs(position.quantity)
                     print(position.ticker + "holds for more than 10 seconds at " + str(position_market_data.time)+ ", need to balance")
                     tradeOrder = SingleStockOrder(position.ticker, position_market_data.date, position_market_data.time,position_market_data.time,
-                                                  current_price,'New', direction, current_price, quantity,'MO')
+                                                  'New', direction, current_price, quantity,'MO')
                     balanceOrders.append(tradeOrder)
 
 

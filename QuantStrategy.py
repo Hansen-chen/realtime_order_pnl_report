@@ -607,8 +607,18 @@ class QuantStrategy(Strategy):
                 return None
             # Check if we have enough data to make decision (At least 110s)
             correspond_future = self.stock2future[ticker]
-            futures_data = session.query(Market_data).filter_by(ticker=correspond_future).all()
-            stock_data = session.query(Market_data).filter_by(ticker=ticker).all()
+            futures_data = session.query(Market_data).order_by(Market_data.time.desc()).filter_by(ticker=correspond_future).all()
+            stock_data = session.query(Market_data).order_by(Market_data.time.desc()).filter_by(ticker=ticker).all()
+
+            print("==========market data debug at " + str(current_time) + "==========")
+
+            for future in futures_data:
+                print(future.time)
+
+            for stock in stock_data:
+                print(stock.time)
+
+            print("==========market data debug at " + str(current_time) + "==========")
 
             if len(futures_data) < 2:
                 print('[%d] Strategy.handle_marketdata: no future data for this ticker' % (os.getpid()))
@@ -617,9 +627,9 @@ class QuantStrategy(Strategy):
                 print('[%d] Strategy.handle_marketdata: no stock data for this ticker' % (os.getpid()))
                 return None
             # calculate the time delta between the earliest and latest timestamp of the stock_data
-            stk_time_delta = (stock_data[-1].timeStamp - stock_data[0].timeStamp).total_seconds()
+            stk_time_delta = (stock_data[-1].time - stock_data[0].time).total_seconds()
             #calculate the time delta between the earliest and latest timestamp of the future_data
-            future_time_delta = (futures_data[-1].timeStamp - futures_data[0].timeStamp).total_seconds()
+            future_time_delta = (futures_data[-1].time - futures_data[0].time).total_seconds()
             if stk_time_delta < 100 or future_time_delta < 100:
                 print('[%d] Strategy.handle_marketdata: not enough data' % (os.getpid()))
                 return None

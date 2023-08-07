@@ -305,7 +305,6 @@ class QuantStrategy(Strategy):
 
         Session = scoped_session(self.session_factory)
 
-        session = Session()
 
         session = Session()
         current_positions = session.query(Current_position).all()

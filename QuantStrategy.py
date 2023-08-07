@@ -76,6 +76,33 @@ class QuantStrategy(Strategy):
             portfolio_volatility = Column(Float())
             max_drawdown = Column(Float())
 
+        class Market_data(self.Base):
+            __tablename__ = 'market_data'
+            marketdataID = Column(Integer(), primary_key=True)
+            ticker = Column(String())
+            date = Column(String())
+            time = Column(DateTime())
+            askPrice5 = Column(Float())
+            askPrice4 = Column(Float())
+            askPrice3 = Column(Float())
+            askPrice2 = Column(Float())
+            askPrice1 = Column(Float())
+            bidPrice1 = Column(Float())
+            bidPrice2 = Column(Float())
+            bidPrice3 = Column(Float())
+            bidPrice4 = Column(Float())
+            bidPrice5 = Column(Float())
+            askSize5 = Column(Integer())
+            askSize4 = Column(Integer())
+            askSize3 = Column(Integer())
+            askSize2 = Column(Integer())
+            askSize1 = Column(Integer())
+            bidSize1 = Column(Integer())
+            bidSize2 = Column(Integer())
+            bidSize3 = Column(Integer())
+            bidSize4 = Column(Integer())
+            bidSize5 = Column(Integer())
+
         self.networth = pd.DataFrame(columns=['date','timestamp','networth'])
 
         self.current_position = pd.DataFrame(columns=['ticker', 'quantity', 'price','dollar_amount'])
@@ -88,7 +115,6 @@ class QuantStrategy(Strategy):
 
         self.metrics = pd.DataFrame(columns=['cumulative_return', 'one_min_return', 'ten_min_return', 'portfolio_volatility', 'max_drawdown'])
         # Load model
-        self.all_market_data = {}
         self.last_position_time = {}
         self.future2stock = {'JBF': '3443', 'QWF': '2388', 'HCF': '2498', 'DBF': '2610', 'EHF': '1319',
                              'IPF': '3035', 'IIF': '3006', 'QXF': '2615', 'PEF': '5425', 'NAF': '3105'}
@@ -98,7 +124,6 @@ class QuantStrategy(Strategy):
         self.future_feature = {}
         self.stock_feature = {}
         self.last_position_time = {} # Log the last position time for each ticker
-        self.if_enough_data = {stock_ticker: False for stock_ticker in self.stock_tickers}
         self.models = {}
         for future_ticker in self.future_tickers:
             self.models[self.future2stock[future_ticker]] = lgb.Booster(model_file='./models/{}.txt'.format(future_ticker))
@@ -281,7 +306,7 @@ class QuantStrategy(Strategy):
         session = Session()
         cancel_orders = session.query(Submitted_order).filter(Submitted_order.submissionTime < timeStamp, Submitted_order.currStatus == 'New', Submitted_order.type == 'LO').all()
         session.close()
-        if cancel_orders is not None:
+        if len(cancel_orders)>0:
             for order in cancel_orders:
                 _order = SingleStockOrder(order.ticker, order.date, order.submissionTime, order.currStatusTime, order.currStatus,'cancel' , order.price, order.size, order.type)
                 _order.orderID = order.orderID
@@ -298,6 +323,7 @@ class QuantStrategy(Strategy):
         Current_position = Base.classes.current_position
         Metrics = Base.classes.portfolio_metrics
         Networth = Base.classes.networth
+        Market_data = Base.classes.market_data
         Session = scoped_session(self.session_factory)
 
 
@@ -541,12 +567,38 @@ class QuantStrategy(Strategy):
             if current_cash_query is not None:
                 current_cash = current_cash_query.quantity
 
-            # Save market data to self.all_market_data
-            if ticker not in self.all_market_data.keys():
-                self.all_market_data[ticker] = deque(maxlen=10000)
-            self.all_market_data[ticker].append(current_market_data)
-            while len(self.all_market_data[ticker]) > 1 and (current_time - self.all_market_data[ticker][0]['time'].iloc[0]).total_seconds() > 110:
-                self.all_market_data[ticker].popleft()
+            # add market data to database
+            new_market_data = Market_data(ticker=ticker,
+                                                date = current_date,
+                                                time = current_time,
+                                                askPrice5 = current_market_data.iloc[0]['askPrice5'],
+                                                askPrice4 = current_market_data.iloc[0]['askPrice4'],
+                                                askPrice3 = current_market_data.iloc[0]['askPrice3'],
+                                                askPrice2 = current_market_data.iloc[0]['askPrice2'],
+                                                askPrice1 = current_market_data.iloc[0]['askPrice1'],
+                                                bidPrice1 = current_market_data.iloc[0]['bidPrice1'],
+                                                bidPrice2 = current_market_data.iloc[0]['bidPrice2'],
+                                                bidPrice3 = current_market_data.iloc[0]['bidPrice3'],
+                                                bidPrice4 = current_market_data.iloc[0]['bidPrice4'],
+                                                bidPrice5 = current_market_data.iloc[0]['bidPrice5'],
+                                                askSize5 = int(current_market_data.iloc[0]['askSize5']),
+                                                askSize4 = int(current_market_data.iloc[0]['askSize4']),
+                                                askSize3 = int(current_market_data.iloc[0]['askSize3']),
+                                                askSize2 = int(current_market_data.iloc[0]['askSize2']),
+                                                askSize1 = int(current_market_data.iloc[0]['askSize1']),
+                                                bidSize1 = int(current_market_data.iloc[0]['bidSize1']),
+                                                bidSize2 = int(current_market_data.iloc[0]['bidSize2']),
+                                                bidSize3 = int(current_market_data.iloc[0]['bidSize3']),
+                                                bidSize4 = int(current_market_data.iloc[0]['bidSize4']),
+                                                bidSize5 = int(current_market_data.iloc[0]['bidSize5'])
+            )
+            session.add(new_market_data)
+            session.commit()
+
+            # remove market data that is older than 110 seconds compared to the current timestamp
+            session.query(Market_data).filter(Market_data.time < current_time - timedelta(seconds=110)).delete()
+            session.commit()
+
             # Check future/stock
             # Check if future ticker consists of month
             
@@ -554,17 +606,23 @@ class QuantStrategy(Strategy):
                 print('[%d] Strategy.handle_marketdata: it is future ticker' % (os.getpid()))
                 return None
             # Check if we have enough data to make decision (At least 110s)
-            if self.if_enough_data[ticker] is False:
-                correspond_future = self.stock2future[ticker]
-                if correspond_future not in self.all_market_data.keys():
-                    print('[%d] Strategy.handle_marketdata: not enough data' % (os.getpid()))
-                    return None
-                stk_time_delta = (self.all_market_data[ticker][-1]['time'].iloc[-1] - self.all_market_data[ticker][0]['time'].iloc[-1]).total_seconds()
-                future_time_delta = (self.all_market_data[correspond_future][-1]['time'].iloc[-1] - self.all_market_data[correspond_future][0]['time'].iloc[-1]).total_seconds()
-                if stk_time_delta < 110 or future_time_delta < 110:
-                    print('[%d] Strategy.handle_marketdata: not enough data' % (os.getpid()))
-                    return None
-            self.if_enough_data[ticker] = True
+            correspond_future = self.stock2future[ticker]
+            futures_data = session.query(Market_data).filter_by(ticker=correspond_future).all()
+            stock_data = session.query(Market_data).filter_by(ticker=ticker).all()
+
+            if len(futures_data) < 2:
+                print('[%d] Strategy.handle_marketdata: no future data for this ticker' % (os.getpid()))
+                return None
+            if len(stock_data) < 2:
+                print('[%d] Strategy.handle_marketdata: no stock data for this ticker' % (os.getpid()))
+                return None
+            # calculate the time delta between the earliest and latest timestamp of the stock_data
+            stk_time_delta = (stock_data[-1].timeStamp - stock_data[0].timeStamp).total_seconds()
+            #calculate the time delta between the earliest and latest timestamp of the future_data
+            future_time_delta = (futures_data[-1].timeStamp - futures_data[0].timeStamp).total_seconds()
+            if stk_time_delta < 100 or future_time_delta < 100:
+                print('[%d] Strategy.handle_marketdata: not enough data' % (os.getpid()))
+                return None
             # Check if stock in current position
             current_position = session.query(Current_position).filter_by(ticker=ticker).first()
             if current_position is not None and current_position.quantity != 0:
@@ -584,8 +642,13 @@ class QuantStrategy(Strategy):
                     print(tradeOrder.outputAsArray(), 'debug tradeOrder.outputAsArray()', ticker)
                     return tradeOrder
             # Concat 100s data in deque and downsampling
-            input_stock_data = pd.concat(list(self.all_market_data[ticker]), axis=0).resample('10s', on='time').last().reset_index()
-            input_future_data = pd.concat(list(self.all_market_data[self.stock2future[ticker]]), axis=0).resample('10s', on='time').last().reset_index()
+            outputCols = ['ticker', 'date', 'time', \
+                          'askPrice5', 'askPrice4', 'askPrice3', 'askPrice2', 'askPrice1', \
+                          'bidPrice1', 'bidPrice2', 'bidPrice3', 'bidPrice4', 'bidPrice5', \
+                          'askSize5', 'askSize4', 'askSize3', 'askSize2', 'askSize1', \
+                          'bidSize1', 'bidSize2', 'bidSize3', 'bidSize4', 'bidSize5']
+            input_stock_data = pd.DataFrame.from_records(stock_data, index='time', columns=outputCols).resample('10s', on='time').last().reset_index()
+            input_future_data = pd.DataFrame.from_records(futures_data, index='time', columns=outputCols).resample('10s', on='time').last().reset_index()
             print(len(input_stock_data), len(input_future_data), 'input_future_data')
             # get feature of 11 samples
             features_df = self.generate_features(input_stock_data.iloc[-11:], input_future_data.iloc[-11:])

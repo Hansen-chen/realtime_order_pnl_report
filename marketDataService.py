@@ -74,7 +74,6 @@ class MarketDataService:
 
     def __init__(self, marketData_2_exchSim_q, marketData_2_platform_q):
         print("[%d]<<<<< call MarketDataService.init" % (os.getpid(),))
-        time.sleep(3)
         self.future2stock = {'JBF': 3443, 'QWF': 2388, 'HCF': 2498, 'DBF': 2610, 'EHF': 1319, 'IPF': 3035, 'IIF': 3006, 'QXF': 2615, 'PEF': 5425, 'NAF': 3105}
         self.future_path = './processedData_2023/futures/'
         self.stock_path = './processedData_2023/stocks/'
@@ -116,7 +115,7 @@ class MarketDataService:
         self.produce_market_data(marketData_2_exchSim_q, marketData_2_platform_q)
 
     def produce_market_data(self, marketData_2_exchSim_q, marketData_2_platform_q):
-        for i in range(500):
+        for i in range(10000):
             self.produce_quote(marketData_2_exchSim_q, marketData_2_platform_q)
             time.sleep(1)
 

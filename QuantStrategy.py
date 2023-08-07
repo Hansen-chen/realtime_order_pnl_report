@@ -579,8 +579,8 @@ class QuantStrategy(Strategy):
                     current_price = (current_market_data.iloc[0]['askPrice1'] + current_market_data.iloc[0]['bidPrice1']) / 2
                     direction = 'buy' if current_position.quantity < 0 else 'sell'
                     quantity = abs(current_position.quantity)
-                    tradeOrder = SingleStockOrder(ticker, datetime.datetime.now().strftime('%Y-%m-%d'), datetime.datetime.now(),
-                                                  datetime.datetime.now(), 'New', direction, current_price, quantity , 'MO')
+                    tradeOrder = SingleStockOrder(ticker, current_date, current_time,
+                                                  current_time, 'New', direction, current_price, quantity , 'MO')
                     print(tradeOrder.outputAsArray(), 'debug tradeOrder.outputAsArray()', ticker)
                     return tradeOrder
             # Concat 100s data in deque and downsampling
@@ -602,8 +602,8 @@ class QuantStrategy(Strategy):
             print("direction :"+ direction)
             current_price = (current_market_data.iloc[0]['askPrice1'] + current_market_data.iloc[0]['bidPrice1']) / 2
             quantity = self.initial_cash * 0.1 // current_price
-            tradeOrder = SingleStockOrder(ticker, datetime.datetime.now().strftime('%Y-%m-%d'), datetime.datetime.now(),
-                                            datetime.datetime.now(), 'New', direction, current_price, quantity, 'MO')
+            tradeOrder = SingleStockOrder(ticker, current_date, current_time,
+                                            current_time, 'New', direction, current_price, quantity, 'MO')
             date, ticker, submissionTime, orderID, currStatus, currStatusTime, direction, price, size, type = tradeOrder.outputAsArray()
             new_order = Submitted_order(date=date, submissionTime=submissionTime, ticker=ticker, orderID=orderID, currStatus=currStatus, currStatusTime=currStatusTime, direction=direction, price=price, size=size, type=type)
             print(tradeOrder.outputAsArray(), 'debug tradeOrder.outputAsArray()', ticker)

@@ -295,6 +295,41 @@ class QuantStrategy(Strategy):
     def getStratDay(self):
         return self.day
 
+    def handle_order_balance(self):
+        balanceOrders = []
+        Base = automap_base()
+        Base.prepare(autoload_with=self.engine)
+
+        Current_position = Base.classes.current_position
+        Market_data = Base.classes.market_data
+
+        Session = scoped_session(self.session_factory)
+
+        session = Session()
+
+        session = Session()
+        current_positions = session.query(Current_position).all()
+        if len(current_positions) == 0:
+            session.close()
+            return None
+        for position in current_positions:
+            position_market_data = session.query(Market_data).filter_by(ticker=position.ticker).order_by(Market_data.time.asc()).first()
+            if position_market_data is None or position.quantity == 0.0:
+                continue
+            else:
+                if position.inception_timestamp < position_market_data.time - timedelta(seconds=10):
+                    current_price = (position_market_data.askPrice1 + position_market_data.bidPrice1) / 2
+                    direction = 'buy' if position.quantity < 0 else 'sell'
+                    quantity = abs(position.quantity)
+                    print(position.ticker + "holds for more than 10 seconds at " + str(position_market_data.time)+ ", need to balance")
+                    tradeOrder = SingleStockOrder(position.ticker, position_market_data.date, position_market_data.time,position_market_data.time,
+                                                  current_price,'New', direction, current_price, quantity,'MO')
+                    balanceOrders.append(tradeOrder)
+
+
+        session.close()
+        return balanceOrders
+
     def cancel_not_filled_orders(self):
         Base = automap_base()
         Base.prepare(autoload_with=self.engine)
@@ -661,25 +696,7 @@ class QuantStrategy(Strategy):
             if stk_time_delta < 10 or future_time_delta < 10:
                 print('[%d] Strategy.handle_marketdata: not enough data' % (os.getpid()))
                 return None
-            # Check if stock in current position
-            current_position = session.query(Current_position).filter_by(ticker=ticker).first()
-            if current_position is not None and current_position.quantity != 0:
-                # if holding time < 10s, we will return None
-                last_position_time = current_position.inception_timestamp
-                if (current_time - last_position_time).total_seconds() < 10:
-                    # Keep this position
-                    print(ticker + ' [%d] Strategy.handle_marketdata: position holding time <10s' % (os.getpid()))
-                    return None
-                else:
-                    # Balance the position
-                    current_price = (current_market_data.iloc[0]['askPrice1'] + current_market_data.iloc[0][
-                        'bidPrice1']) / 2
-                    direction = 'buy' if current_position.quantity < 0 else 'sell'
-                    quantity = abs(current_position.quantity)
-                    tradeOrder = SingleStockOrder(ticker, current_date, current_time,
-                                                  current_time, 'New', direction, current_price, quantity, 'MO')
-                    print(tradeOrder.outputAsArray(), 'debug tradeOrder.outputAsArray()', ticker)
-                    return tradeOrder
+
             # Concat 100s data in deque and downsampling
             futures_data_query = session.query(Market_data).order_by(Market_data.time.asc()).filter_by(
                 ticker=correspond_future)

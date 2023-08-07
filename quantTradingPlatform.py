@@ -31,7 +31,7 @@ class TradingPlatform:
     def consume_marketData(self, platform_2_exchSim_order_q, marketData_2_platform_q):
         print('[%d]Platform.consume_marketData' % (os.getpid(),))
         while True:
-            time.sleep(2)
+            time.sleep(1)
             res = marketData_2_platform_q.get()
             print('[%d] Platform.on_md' % (os.getpid()))
             print(res.outputAsDataFrame())
@@ -45,17 +45,17 @@ class TradingPlatform:
     def handle_execution(self, exchSim_2_platform_execution_q):
         print('[%d]Platform.handle_execution' % (os.getpid(),))
         while True:
-            time.sleep(2)
+            time.sleep(1)
             execution = exchSim_2_platform_execution_q.get()
             print('[%d] Platform.handle_execution' % (os.getpid()))
             print(execution.outputAsArray())
             self.quantStrat.run(None, execution)
 
-    def handle_order_cancelation(self, platform_2_exchSim_order_q):
-        print('[%d]Platform.handle_order_cancelation' % (os.getpid(),))
+    def handle_order_balance(self, platform_2_exchSim_order_q):
+        print('[%d]Platform.handle_balance_order' % (os.getpid(),))
         while True:
             time.sleep(2)
-            res = self.quantStrat.cancel_not_filled_orders()
+            res = self.quantStrat.handle_order_balance()
             for order in res:
                 platform_2_exchSim_order_q.put(order)
 

@@ -154,5 +154,5 @@ class MarketDataService:
             marketData_2_exchSim_q.put(quoteSnapshot)
             marketData_2_platform_q.put(quoteSnapshot)
 
-            #time.sleep(0.5)
+            time.sleep(0.5)
             self.counter += 1

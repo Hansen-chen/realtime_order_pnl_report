@@ -9,26 +9,12 @@ class ExchangeSimulator:
 
     def __init__(self, marketData_2_exchSim_q, platform_2_exchSim_order_q, exchSim_2_platform_execution_q):
         print("[%d]<<<<< call ExchSim.init" % (os.getpid(),))
-        self.stockdata = None
-        self.futuredata = None
-        self.future2stock = {'JBF': '3443', 'QWF': '2388', 'HCF': '2498', 'DBF': '2610', 'EHF': '1319', 'IPF': '3035',
-                             'IIF': '3006', 'QXF': '2615', 'PEF': '5425', 'NAF': '3105'}
-        t_md = threading.Thread(name='exchsim.on_md', target=self.consume_md, args=(marketData_2_exchSim_q,))
-        t_md.start()
+        #t_md = threading.Thread(name='exchsim.on_md', target=self.consume_md, args=(marketData_2_exchSim_q,))
+        #t_md.start()
 
         t_order = threading.Thread(name='exchsim.on_order', target=self.consume_order,
                                    args=(platform_2_exchSim_order_q, exchSim_2_platform_execution_q,))
         t_order.start()
-
-    def consume_md(self, marketData_2_exchSim_q):
-        while True:
-            marketData = marketData_2_exchSim_q.get()
-            if str(marketData.ticker) in list(self.future2stock.values()):
-                self.stockdata = marketData
-            elif str(marketData.ticker) in list(self.future2stock.keys()):
-                self.futuredata = marketData
-            # print('[%d]ExchSim.consume_md' % (os.getpid()))
-            # print(marketData.outputAsDataFrame())
 
     def consume_order(self, platform_2_exchSim_order_q, exchSim_2_platform_execution_q):
         while True:
@@ -38,20 +24,16 @@ class ExchangeSimulator:
             self.produce_execution(res, exchSim_2_platform_execution_q)
 
     def produce_execution(self, order, exchSim_2_platform_execution_q):
-        execution = self.Trade(order, self.stockdata, self.futuredata)
+        execution = self.Trade(order)
         for n in range(len(execution)):
             exchSim_2_platform_execution_q.put(execution[n])
         # print('[%d]ExchSim.produce_execution' % (os.getpid()))
         # print(execution.outputAsArray())
 
-    def Trade(self, order, stockdata, futuredata):
+    def Trade(self, order):
         t = time.time()
         exec_list = []
-        market_data = None
-        if str(order.ticker) in list(self.future2stock.values()):
-            market_data = stockdata
-        elif str(order.ticker) in list(self.future2stock.keys()):
-            market_data = futuredata
+        market_data = order.orderbookSnapshot
         remain_size = order.size
         execution_size = []
         if order.type == 'LO':  # Limit Order

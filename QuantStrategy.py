@@ -320,9 +320,18 @@ class QuantStrategy(Strategy):
                     current_price = (position_market_data.askPrice1 + position_market_data.bidPrice1) / 2
                     direction = 'buy' if position.quantity < 0 else 'sell'
                     quantity = abs(position.quantity)
+
+                    bidPrice, askPrice, bidSize, askSize = [], [], [], []
+                    bidPrice.extend([position_market_data.bidPrice1, position_market_data.bidPrice2, position_market_data.bidPrice3, position_market_data.bidPrice4, position_market_data.bidPrice5])
+                    askPrice.extend([position_market_data.askPrice1, position_market_data.askPrice2, position_market_data.askPrice3, position_market_data.askPrice4, position_market_data.askPrice5])
+                    bidSize.extend([position_market_data.bidSize1, position_market_data.bidSize2, position_market_data.bidSize3, position_market_data.bidSize4, position_market_data.bidSize5])
+                    askSize.extend([position_market_data.askSize1, position_market_data.askSize2, position_market_data.askSize3, position_market_data.askSize4, position_market_data.askSize5])
+
+                    quoteSnapshot = OrderBookSnapshot_FiveLevels(position.ticker, position_market_data.date, position_market_data.time, bidPrice,askPrice, bidSize, askSize)
+
                     print(position.ticker + " holds for more than 10 seconds at " + str(position_market_data.time)+ ", need to balance")
                     tradeOrder = SingleStockOrder(position.ticker, position_market_data.date, position_market_data.time,position_market_data.time,
-                                                  'New', direction, current_price, quantity,'MO')
+                                                  'New', direction, current_price, quantity,'MO',quoteSnapshot)
                     balanceOrders.append(tradeOrder)
 
 
@@ -347,7 +356,7 @@ class QuantStrategy(Strategy):
         if len(cancel_orders) > 0:
             for order in cancel_orders:
                 _order = SingleStockOrder(order.ticker, order.date, order.submissionTime, order.currStatusTime,
-                                          order.currStatus, 'cancel', order.price, order.size, order.type)
+                                          order.currStatus, 'cancel', order.price, order.size, order.type, None)
                 _order.orderID = order.orderID
                 orders_to_cancel.append(_order)
 
@@ -731,7 +740,7 @@ class QuantStrategy(Strategy):
             current_price = (current_market_data.iloc[0]['askPrice1'] + current_market_data.iloc[0]['bidPrice1']) / 2
             quantity = self.initial_cash * 0.1 // current_price
             tradeOrder = SingleStockOrder(ticker, current_date, current_time,
-                                          current_time, 'New', direction, current_price, quantity, 'MO')
+                                          current_time, 'New', direction, current_price, quantity, 'MO', marketData)
             date, ticker, submissionTime, orderID, currStatus, currStatusTime, direction, price, size, type = tradeOrder.outputAsArray()
             new_order = Submitted_order(date=date, submissionTime=submissionTime, ticker=ticker, orderID=orderID,
                                         currStatus=currStatus, currStatusTime=currStatusTime, direction=direction,

@@ -7,7 +7,7 @@ Created on Fri Jul  5 23:47:43 2019
 import random
 class SingleStockOrder():
     
-    def __init__(self, ticker, date, submissionTime,currStatusTime,currStatus,direction,price,size,type):
+    def __init__(self, ticker, date, submissionTime,currStatusTime,currStatus,direction,price,size,type,orderbookSnapshot):
         self.orderID = random.randint(0,100000)
         self.ticker = ticker
         self.date = date
@@ -18,6 +18,7 @@ class SingleStockOrder():
         self.price = price
         self.size = size
         self.type = type #"MLO", "LO", "MO", "TWAP","Cancel"
+        self.orderbookSnapshot = orderbookSnapshot
 
     def outputAsArray(self):
         output = []

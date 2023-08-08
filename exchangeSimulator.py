@@ -34,6 +34,8 @@ class ExchangeSimulator:
         t = time.time()
         exec_list = []
         market_data = order.orderbookSnapshot
+        print("Order book :")
+        print(order.orderbookSnapshot.outputAsDataFrame())
         remain_size = order.size
         execution_size = []
         if order.type == 'LO':  # Limit Order

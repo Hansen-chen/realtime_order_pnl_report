@@ -305,14 +305,14 @@ class QuantStrategy(Strategy):
 
         Session = scoped_session(self.session_factory)
 
-
         session = Session()
         current_positions = session.query(Current_position).all()
         if len(current_positions) == 0:
             session.close()
             return balanceOrders
         for position in current_positions:
-            position_market_data = session.query(Market_data).filter_by(ticker=position.ticker).order_by(Market_data.time.asc()).first()
+            position_market_data = session.query(Market_data).filter_by(ticker=position.ticker).order_by(
+                Market_data.time.asc()).first()
             if position_market_data is None or position.quantity == 0.0:
                 continue
             else:
@@ -322,20 +322,34 @@ class QuantStrategy(Strategy):
                     quantity = abs(position.quantity)
 
                     bidPrice, askPrice, bidSize, askSize = [], [], [], []
-                    bidPrice.extend([position_market_data.bidPrice1, position_market_data.bidPrice2, position_market_data.bidPrice3, position_market_data.bidPrice4, position_market_data.bidPrice5])
-                    askPrice.extend([position_market_data.askPrice1, position_market_data.askPrice2, position_market_data.askPrice3, position_market_data.askPrice4, position_market_data.askPrice5])
-                    bidSize.extend([position_market_data.bidSize1, position_market_data.bidSize2, position_market_data.bidSize3, position_market_data.bidSize4, position_market_data.bidSize5])
-                    askSize.extend([position_market_data.askSize1, position_market_data.askSize2, position_market_data.askSize3, position_market_data.askSize4, position_market_data.askSize5])
+                    bidPrice.extend(
+                        [position_market_data.bidPrice1, position_market_data.bidPrice2, position_market_data.bidPrice3,
+                         position_market_data.bidPrice4, position_market_data.bidPrice5])
+                    askPrice.extend(
+                        [position_market_data.askPrice1, position_market_data.askPrice2, position_market_data.askPrice3,
+                         position_market_data.askPrice4, position_market_data.askPrice5])
+                    bidSize.extend(
+                        [position_market_data.bidSize1, position_market_data.bidSize2, position_market_data.bidSize3,
+                         position_market_data.bidSize4, position_market_data.bidSize5])
+                    askSize.extend(
+                        [position_market_data.askSize1, position_market_data.askSize2, position_market_data.askSize3,
+                         position_market_data.askSize4, position_market_data.askSize5])
 
-                    quoteSnapshot = OrderBookSnapshot_FiveLevels(position.ticker, position_market_data.date, position_market_data.time, bidPrice,askPrice, bidSize, askSize)
+                    quoteSnapshot = OrderBookSnapshot_FiveLevels(position.ticker, position_market_data.date,
+                                                                 position_market_data.time, bidPrice, askPrice, bidSize,
+                                                                 askSize)
 
-                    print(position.ticker + " holds for more than 10 seconds at " + str(position_market_data.time)+ ", need to balance")
-                    tradeOrder = SingleStockOrder(position.ticker, position_market_data.date, position_market_data.time,position_market_data.time,
-                                                  'New', direction, current_price, quantity,'MO',quoteSnapshot)
+                    print(quoteSnapshot.outputAsDataFrame())
+
+                    print(position.ticker + " holds for more than 10 seconds at " + str(
+                        position_market_data.time) + ", need to balance")
+                    tradeOrder = SingleStockOrder(position.ticker, position_market_data.date, position_market_data.time,
+                                                  position_market_data.time,
+                                                  'New', direction, current_price, quantity, 'MO', quoteSnapshot)
                     balanceOrders.append(tradeOrder)
 
-
         session.close()
+        print(balanceOrders)
         return balanceOrders
 
     def cancel_not_filled_orders(self):
@@ -399,7 +413,7 @@ class QuantStrategy(Strategy):
 
                 session.add(new_order)
                 session.commit()
-                return None
+
             else:
                 if price == 0 and size == 0:
                     submitted_order.currStatus = 'Not Filled'
@@ -490,7 +504,7 @@ class QuantStrategy(Strategy):
                 # filter the networthes df with timestamp within 10 minute before the current timestamp (networthes.iloc[-1]['timestamp'])
                 ten_minutes_networthes = networthes[
                     networthes['timestamp'] >= networthes.iloc[-1]['timestamp'] - timedelta(minutes=10)]
-                ten_min_return = (one_minutes_networthes.iloc[-1]['networth'] / one_minutes_networthes.iloc[0][
+                ten_min_return = (ten_minutes_networthes.iloc[-1]['networth'] / ten_minutes_networthes.iloc[0][
                     'networth'] - 1) * 100
 
                 # calculate portfolio volatility
@@ -597,7 +611,7 @@ class QuantStrategy(Strategy):
                 # filter the networthes df with timestamp within 10 minute before the current timestamp (networthes.iloc[-1]['timestamp'])
                 ten_minutes_networthes = networthes[
                     networthes['timestamp'] >= networthes.iloc[-1]['timestamp'] - timedelta(minutes=10)]
-                ten_min_return = (one_minutes_networthes.iloc[-1]['networth'] / one_minutes_networthes.iloc[0][
+                ten_min_return = (ten_minutes_networthes.iloc[-1]['networth'] / ten_minutes_networthes.iloc[0][
                     'networth'] - 1) * 100
 
                 # calculate portfolio volatility
